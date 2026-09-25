@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Inhouse Пульс</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Manrope:wght@300;400;600;700&family=Oswald:wght@300&display=swap">
+<style>
+body{margin:0}
+:root{
+  color-scheme:dark;
+  --bg:#161616; --card:#212121; --card2:#2A2A2A; --line:rgba(255,255,255,.10); --line2:rgba(255,255,255,.18);
+  --ink:#F4F4F4; --ink2:#BDBDBD; --muted:#868686;
+  --y:#FFD400; --y-soft:rgba(255,212,0,.14);
+  --red:#FF5C50; --red-soft:rgba(255,92,80,.15);
+  --orange:#FF9B3D; --orange-soft:rgba(255,155,61,.15);
+  --green:#3DD08A; --green-soft:rgba(61,208,138,.14);
+  --grey-soft:rgba(255,255,255,.07);
+  --display:"Unbounded","Manrope",system-ui,sans-serif;
+  --body:"Manrope",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box} [hidden]{display:none!important}
+html{background:var(--bg)}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1100px;margin:0 auto;padding-inline:16px;padding-block:14px 100px}
+.num{font-variant-numeric:tabular-nums}
+button{font-family:inherit}
+button:focus-visible,.row:focus-visible{outline:2px solid var(--y);outline-offset:2px}
+
+/* header */
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:22px}
+.logo{position:relative;font-family:"Oswald","Arial Narrow",sans-serif;font-weight:300;font-size:15px;line-height:1.05;letter-spacing:.2em;padding:6px 0 6px 10px;color:var(--ink)}
+.logo::before{content:"";position:absolute;left:0;top:0;bottom:0;width:26px;border:1px solid var(--y);border-right:0}
+.logo i{color:var(--y);font-style:normal}
+.upd{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--muted);text-align:right}
+.refresh{width:36px;height:36px;border-radius:50%;border:1px solid var(--line2);background:none;color:var(--y);display:grid;place-items:center;cursor:pointer;flex:none}
+.refresh svg{width:17px;height:17px}
+.refresh.spin svg{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.ttl{position:relative;padding-left:22px;margin-bottom:18px}
+.ttl::before{content:"";position:absolute;left:0;top:2px;width:12px;height:12px;border-left:1px solid var(--y);border-bottom:1px solid var(--y)}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(20px,5.6vw,34px);line-height:1.08;text-transform:uppercase;margin:0;text-wrap:balance;letter-spacing:.01em}
+h1 em{font-style:normal;color:var(--y)}
+.ttl p{margin:6px 0 0;color:var(--muted);font-size:12.5px}
+
+/* nav */
+nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:10;background:rgba(22,22,22,.94);backdrop-filter:blur(10px);border-top:1px solid var(--line);display:flex;padding:6px 8px calc(8px + env(safe-area-inset-bottom,0px))}
+nav.tabs button{flex:1;border:0;background:none;color:var(--muted);font:600 10.5px var(--body);letter-spacing:.04em;text-transform:uppercase;display:flex;flex-direction:column;align-items:center;gap:4px;padding:7px 4px;cursor:pointer}
+nav.tabs button svg{width:22px;height:22px}
+nav.tabs button[aria-selected="true"]{color:var(--y)}
+@media (min-width:860px){
+  nav.tabs{position:static;background:none;backdrop-filter:none;border:0;border-bottom:1px solid var(--line);padding:0;margin-bottom:26px;gap:28px;justify-content:flex-start}
+  nav.tabs button{flex:none;flex-direction:row;gap:8px;font-size:12px;padding:12px 0;border-bottom:2px solid transparent;margin-bottom:-1px}
+  nav.tabs button[aria-selected="true"]{border-bottom-color:var(--y)}
+  nav.tabs button svg{width:18px;height:18px}
+  .wrap{padding-block:24px 56px}
+}
+
+/* layout */
+section.view{display:grid;gap:12px}
+.grid{display:grid;gap:12px}
+.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (min-width:860px){.kpis{grid-template-columns:2fr 1fr 1fr}.two{grid-template-columns:1.35fr 1fr;align-items:start}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:18px}
+.hero{grid-column:1/-1;position:relative;border-radius:22px 22px 22px 72px;padding:20px 20px 22px 24px;background:linear-gradient(160deg,#262626,#1d1d1d)}
+@media (min-width:860px){.hero{grid-column:auto}}
+.hero::after{content:"";position:absolute;right:-5px;top:-5px;width:9px;height:9px;background:var(--y);transform:rotate(45deg);border-radius:1px}
+.lbl{font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.big{font-weight:300;color:var(--y);font-size:clamp(34px,10vw,52px);line-height:1;margin-top:10px;letter-spacing:-.02em}
+.mid{font-weight:300;font-size:clamp(24px,6.5vw,32px);line-height:1.05;margin-top:8px;letter-spacing:-.01em}
+.sub{font-size:12px;color:var(--ink2);margin-top:6px}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:7px;vertical-align:1px}
+h2{font-family:var(--display);font-weight:500;font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 14px;display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+h2 small{font-family:var(--body);font-weight:400;letter-spacing:0;text-transform:none;color:var(--muted);font-size:12px}
+
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.chip{border:1px solid var(--line2);background:none;color:var(--ink2);font:600 12px var(--body);padding:7px 13px;border-radius:999px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--y);color:#161616;border-color:var(--y)}
+.pill{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.02em;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.p-red{background:var(--red-soft);color:var(--red)} .p-orange{background:var(--orange-soft);color:var(--orange)}
+.p-green{background:var(--green-soft);color:var(--green)} .p-grey{background:var(--grey-soft);color:var(--muted)}
+.p-y{background:var(--y-soft);color:var(--y)}
+.more{background:none;border:0;border-bottom:1px solid var(--y);color:var(--y);font:500 11px var(--display);letter-spacing:.06em;text-transform:uppercase;padding:0 0 3px;margin-top:14px;cursor:pointer}
+.more::after{content:" ›";font-family:var(--body);font-weight:700}
+
+/* rows */
+.list{display:flex;flex-direction:column}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:13px 0;border:0;border-top:1px solid var(--line);background:none;color:inherit;font:inherit;text-align:left;width:100%}
+.row:first-child{border-top:0;padding-top:2px}
+.row.click{cursor:pointer}
+.row .t{font-weight:700;overflow-wrap:anywhere}
+.row .s{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.row .amt{font-weight:700;text-align:right}
+.bar{grid-column:1/-1;height:4px;background:var(--grey-soft);border-radius:2px;overflow:hidden;margin-top:5px}
+.bar i{display:block;height:100%;border-radius:2px}
+.detail{grid-column:1/-1;margin-top:10px;background:var(--card2);border-radius:14px 14px 14px 32px;padding:12px 14px;display:grid;gap:10px;cursor:auto}
+.it{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;font-size:12.5px}
+.it .m{font-weight:700;text-transform:capitalize}
+.it .n{grid-column:1/-1;color:var(--y);opacity:.85}
+
+.chart{width:100%;display:block}
+.chart text{fill:var(--muted);font:11px var(--body);font-variant-numeric:tabular-nums}
+.gl{stroke:var(--line);stroke-width:1}
+.legend{display:flex;gap:8px 16px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin-top:10px}
+.stack{display:flex;height:10px;border-radius:5px;overflow:hidden;gap:2px}
+.stack i{display:block;height:100%}
+.note{font-size:12px;color:var(--muted);margin-top:8px}
+
+.person{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;padding:11px 0;border-top:1px solid var(--line)}
+.person:first-child{border-top:0;padding-top:2px}
+.track{grid-column:1/-1;position:relative;height:6px;background:var(--grey-soft);border-radius:3px;margin-top:3px}
+.track .norm{position:absolute;top:-3px;bottom:-3px;border-left:1px dashed var(--green);border-right:1px dashed var(--green);background:rgba(61,208,138,.10)}
+.track .pace{position:absolute;top:-5px;bottom:-5px;width:2px;background:var(--ink);opacity:.55;border-radius:1px}
+.track .fill{position:absolute;left:0;top:0;bottom:0;border-radius:3px}
+
+.search{width:100%;background:var(--card2);border:1px solid var(--line);border-radius:12px;color:var(--ink);font:500 14px var(--body);padding:10px 12px;margin-bottom:12px}
+.search::placeholder{color:var(--muted)}
+.search:focus{outline:none;border-color:var(--y)}
+.copy{justify-self:start;background:var(--y);color:#161616;border:0;border-radius:999px;font:700 12px var(--body);padding:9px 14px;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+.copy svg{width:15px;height:15px}
+.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--y);color:#161616;font-weight:700;font-size:13px;padding:10px 16px;border-radius:999px;z-index:20;box-shadow:0 6px 24px rgba(0,0,0,.4)}
+.fallback{width:100%;min-height:150px;background:var(--bg);color:var(--ink);border:1px solid var(--y);border-radius:10px;font:13px var(--body);padding:10px}
+.state{padding:48px 16px;text-align:center;color:var(--muted)}
+.state b{display:block;color:var(--ink);font-family:var(--display);font-weight:500;text-transform:uppercase;font-size:13px;letter-spacing:.06em;margin-bottom:8px}
+.demo{font-size:11px;color:var(--muted);border:1px dashed var(--line2);border-radius:10px;padding:8px 12px;margin-bottom:14px}
+@media (prefers-reduced-motion:reduce){.refresh.spin svg{animation:none}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="logo">INHOUSE<i>.</i><br>MEDIA</div>
+    <div class="upd"><span id="upd">Загрузка…</span>
+      <button class="refresh" id="refresh" aria-label="Обновить данные"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tab-debt" data-v="debt" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 17l5-5 4 4 8-9"/><path d="M15 7h5v5"/></svg>Дебиторка</button>
+    <button role="tab" id="tab-load" data-v="load" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c.6-3.4 3-5 6-5s5.4 1.6 6 5"/><path d="M16 5.5a3 3 0 010 5.6M18.5 15c1.4.7 2.3 2.4 2.5 5"/></svg>Нагрузка</button>
+    <button role="tab" id="tab-close" data-v="close" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 12l2.5 2.5L16 9"/></svg>Закрытие</button>
+  </nav>
+
+  <div class="ttl"><h1 id="title"></h1><p id="subtitle"></p></div>
+  <div id="demoNote" class="demo" hidden>Демо-режим: снимок данных из загруженных таблиц. В Telegram страница берёт данные из Google Таблиц напрямую.<div class="chips" style="margin:8px 0 0"><button class="chip" id="asAdmin" aria-pressed="true">Полный доступ</button><button class="chip" id="asManager" aria-pressed="false">Как видит менеджер</button></div></div>
+  <div id="state" class="state" hidden></div>
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <section class="view" id="v-debt"></section>
+  <section class="view" id="v-load" hidden></section>
+  <section class="view" id="v-close" hidden></section>
+</div>
+
+<script>
+/* ====== НАСТРОЙКА ====== */
+const API_URL = 'https://script.google.com/macros/s/AKfycbzyXwXJSB-OCnLfWCuJMiyNB4ZCpKVUKGTln-w4AKbDdnV4we7NHk71jkhIvGyQf-xu/exec';   // ссылка на веб-приложение Apps Script (…/exec)
+const DEMO = null;           // null в рабочей версии
+/* ======================= */
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const MON = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+const MONF = ['январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
+const MONG = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+const fmt = n => Math.round(n).toLocaleString('ru-RU');
+const hrs = n => (Math.round(n*10)/10).toLocaleString('ru-RU');
+const mln = n => (n/1e6).toLocaleString('ru-RU',{maximumFractionDigits:n>=1e7?1:2}) + ' млн';
+const money = n => n >= 1e6 ? mln(n) + ' ₽' : fmt(n) + ' ₽';
+const ym = s => { const [y,m] = s.split('-'); return MONF[+m-1] + ' ' + y; };
+const dlong = s => { const [y,m,d] = s.split('-'); return (+d) + ' ' + MONG[+m-1]; };
+const dshort = s => { const [y,m,d] = s.split('-'); return (+d) + ' ' + MON[+m-1]; };
+const sum = (a,f) => a.reduce((s,x)=>s+f(x),0);
+
+const tg = window.Telegram && window.Telegram.WebApp;
+if (tg) { try { tg.ready(); tg.expand(); tg.setHeaderColor('#161616'); tg.setBackgroundColor('#161616'); } catch(e){} }
+
+let D = null, view = 'debt';
+
+/* ---------- data ---------- */
+async function load(force){
+  const btn = $('#refresh'); btn.classList.add('spin');
+  try {
+    if (DEMO) { D = demoRole === 'manager' ? {...DEMO, role:'manager', load:undefined} : {...DEMO, role:'admin'}; $('#demoNote').hidden = false; }
+    else {
+      if (!API_URL || API_URL.startsWith('__')) throw new Error('Не указана ссылка на Apps Script (API_URL).');
+      const auth = tg && tg.initData ? tg.initData : '';
+      if (!auth) throw new Error('Откройте приложение через бота в Telegram.');
+      const r = await fetch(API_URL + '?auth=' + encodeURIComponent(auth) + (force ? '&refresh=1' : ''));
+      const j = await r.json();
+      if (j.error === 'forbidden') throw new Error('Нет доступа. Добавьте свой Telegram ID в список ALLOWED_IDS в Apps Script.');
+      if (j.error) throw new Error(j.error);
+      D = j;
+    }
+    $('#state').hidden = true;
+    const t = new Date(D.updatedAt);
+    $('#upd').innerHTML = 'Обновлено<br>' + t.toLocaleDateString('ru-RU',{day:'numeric',month:'short'}) + ', ' + t.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+    const full = D.role !== 'manager' && !!D.load;
+    $('#tab-load').hidden = !full;
+    if (!full && view === 'load') view = 'debt';
+    renderDebt(); if (full) renderLoad(); renderClose(); show(view);
+  } catch (e) {
+    $('#state').hidden = false; $('#state').innerHTML = '<b>Данные не загрузились</b>' + esc(e.message);
+    $('#upd').textContent = '';
+  } finally { btn.classList.remove('spin'); }
+}
+$('#refresh').onclick = () => load(true);
+let demoRole = 'admin';
+['asAdmin','asManager'].forEach(id => $('#'+id).onclick = () => { demoRole = id==='asManager'?'manager':'admin';
+  $('#asAdmin').setAttribute('aria-pressed', demoRole==='admin'); $('#asManager').setAttribute('aria-pressed', demoRole==='manager'); load(false); });
+
+/* ---------- tabs ---------- */
+const HEAD = {
+  debt: () => ['Дебиторская <em>задолженность</em>', 'Срез на ' + dlong(D.debt.date) + ' · ' + D.debt.sheet],
+  load: () => ['Нагрузка <em>команды</em>', ym(D.load.month) + ' · из личных таблиц сотрудников'],
+  close: () => ['Закрытие <em>месяца</em>', 'Статусы закрывающих документов']
+};
+function show(v){
+  if (v === 'load' && D && !D.load) v = 'debt';
+  view = v;
+  document.querySelectorAll('nav.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.v === v));
+  ['debt','load','close'].forEach(k => $('#v-'+k).hidden = !D || k !== v);
+  if (D) { const [t,s] = HEAD[v](); $('#title').innerHTML = t; $('#subtitle').textContent = s; }
+  try { localStorage.setItem('tab', v); } catch(e){}
+  if (D && v === 'debt') drawTrend(); if (D && v === 'load') drawHours();
+}
+document.querySelectorAll('nav.tabs button').forEach(b => b.onclick = () => show(b.dataset.v));
+
+/* ---------- charts ---------- */
+function niceStep(raw){ const p = Math.pow(10, Math.floor(Math.log10(raw))); const f = raw/p; return (f<=1?1:f<=2?2:f<=2.5?2.5:f<=5?5:10)*p; }
+function drawTrend(){
+  const el = $('#trend'); if (!el || !el.offsetParent) return;
+  const pts = D.debt.history; if (pts.length < 2) { el.innerHTML = '<div class="note">Мало данных для графика.</div>'; return; }
+  const W = Math.max(el.clientWidth, 260), H = 190, L = 40, R = 14, T = 22, B = 24;
+  const max = Math.max(...pts.map(p=>p[1])); const step = niceStep(max/4); const top = Math.ceil(max/step)*step;
+  const x = i => L + i*(W-L-R)/(pts.length-1), y = v => T + (H-T-B)*(1 - v/top);
+  let g = '';
+  for (let v = 0; v <= top + 1; v += step) g += `<line class="gl" x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L-6}" y="${y(v)+4}" text-anchor="end">${v?(v/1e6)+'м':'0'}</text>`;
+  const line = pts.map((p,i)=>`${i?'L':'M'}${x(i).toFixed(1)},${y(p[1]).toFixed(1)}`).join('');
+  const area = line + `L${x(pts.length-1)},${y(0)}L${x(0)},${y(0)}Z`;
+  let xl = '', lastM = '', lastX = -99;
+  pts.forEach((p,i)=>{ const m = p[0].slice(0,7); if (m !== lastM) { lastM = m; if (x(i) - lastX > 34 && i < pts.length-2) { xl += `<text x="${x(i)}" y="${H-6}" text-anchor="middle">${MON[+p[0].slice(5,7)-1]}</text>`; lastX = x(i); } } });
+  const li = pts.length-1, lx = x(li), ly = y(pts[li][1]);
+  el.innerHTML = `<svg class="chart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Динамика дебиторской задолженности">
+    <defs><linearGradient id="ga" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFD400" stop-opacity=".30"/><stop offset="1" stop-color="#FFD400" stop-opacity="0"/></linearGradient></defs>
+    ${g}<path d="${area}" fill="url(#ga)"/><path d="${line}" fill="none" stroke="#FFD400" stroke-width="2" stroke-linejoin="round"/>
+    ${xl}<rect x="${lx-5}" y="${ly-5}" width="10" height="10" fill="#FFD400" transform="rotate(45 ${lx} ${ly})"/>
+    <text x="${lx-10}" y="${ly-10}" text-anchor="end" style="fill:var(--ink);font-weight:700">${mln(pts[li][1])}</text></svg>`;
+}
+function drawHours(){
+  const el = $('#hours'); if (!el || !el.offsetParent) return;
+  const pts = D.load.history.slice(-8);
+  const W = Math.max(el.clientWidth,240), H = 170, L = 34, B = 24, T = 20;
+  const top = Math.ceil(Math.max(...pts.map(p=>p[1]), 1)/500)*500, bw = (W-L)/pts.length;
+  const y = v => T + (H-T-B)*(1-v/top);
+  let s = '';
+  for (let v=0; v<=top; v+=500) s += `<line class="gl" x1="${L}" x2="${W}" y1="${y(v)}" y2="${y(v)}"/><text x="${L-6}" y="${y(v)+4}" text-anchor="end">${v?(v/1000).toLocaleString('ru-RU')+'т':'0'}</text>`;
+  pts.forEach((p,i)=>{ const x = L + i*bw + bw*0.2, w = bw*0.6, cur = p[0] === D.load.month;
+    s += `<rect x="${x}" y="${y(p[1])}" width="${w}" height="${Math.max(y(0)-y(p[1]),0)}" rx="3" fill="${cur?'rgba(255,212,0,.25)':'#FFD400'}" ${cur?'stroke="#FFD400" stroke-dasharray="3 3"':''}/>
+    <text x="${x+w/2}" y="${H-6}" text-anchor="middle">${MON[+p[0].slice(5)-1]}</text>
+    <text x="${x+w/2}" y="${y(p[1])-6}" text-anchor="middle" style="fill:var(--ink2);font-size:10px">${fmt(p[1])}</text>`; });
+  el.innerHTML = `<svg class="chart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Часы команды по месяцам">${s}</svg><div class="note">Текущий месяц ещё идёт — столбец пунктиром.</div>`;
+}
+
+/* ---------- Дебиторка ---------- */
+let debtFilter = 'all', openDebt = null, debtQuery = '';
+function renderDebt(){
+  const debt = D.debt.clients, total = sum(debt, c=>c.total);
+  const red = debt.filter(c=>c.zone==='red'), green = debt.filter(c=>c.zone==='green');
+  const h = D.debt.history, prev = h.length > 1 ? h[h.length-2][1] : total, delta = total - prev;
+  const maxT = Math.max(...debt.map(c=>c.total), 1);
+  const list = debt.filter(c => debtFilter==='all' || c.zone===debtFilter);
+  const byClient = {}; debt.forEach(c => byClient[c.client] = (byClient[c.client]||0) + c.total);
+  const topC = Object.entries(byClient).sort((a,b)=>b[1]-a[1])[0] || ['—',0];
+  const peak = h.reduce((a,b)=>b[1]>a[1]?b:a, h[0] || ['',0]);
+  $('#v-debt').innerHTML = `
+  <div class="grid kpis">
+    <div class="card hero"><div class="lbl">Общий долг клиентов</div><div class="big num">${fmt(total)} ₽</div>
+      <div class="sub num">${delta<=0?'▼':'▲'} ${money(Math.abs(delta))} за неделю · ${debt.length} позиций</div></div>
+    <div class="card"><div class="lbl"><span class="dot" style="background:var(--red)"></span>Просрочка</div><div class="mid num">${mln(sum(red,c=>c.total))}</div><div class="sub">${red.length} поз. · старше месяца</div></div>
+    <div class="card"><div class="lbl"><span class="dot" style="background:var(--green)"></span>Текущий</div><div class="mid num">${mln(sum(green,c=>c.total))}</div><div class="sub">${green.length} поз. · прошлый месяц</div></div>
+  </div>
+  <div class="grid two">
+    <div class="card"><h2>Кто должен <small>нажмите на строку — документы и текст для клиента</small></h2>
+      <input class="search" id="debtSearch" type="search" placeholder="Поиск: клиент или проект" value="${esc(debtQuery)}" autocomplete="off">
+      <div class="chips">${[['all','Все'],['red','Просрочка'],['green','Текущие']].map(([k,l])=>`<button class="chip" data-f="${k}" aria-pressed="${debtFilter===k}">${l}</button>`).join('')}</div>
+      <div class="list" id="debtList"></div>
+    </div>
+    <div class="grid">
+      <div class="card"><h2>Динамика долга <small>по недельным срезам</small></h2><div id="trend"></div>
+        ${peak[0]?`<div class="note">Пик — ${mln(peak[1])} ₽ (${dshort(peak[0])}).</div>`:''}</div>
+      <div class="card"><h2>Концентрация</h2>
+        <div class="stack"><i style="width:${topC[1]/total*100}%;background:var(--y)"></i><i style="flex:1;background:var(--grey-soft)"></i></div>
+        <div class="legend"><span><span class="dot" style="background:var(--y)"></span>${esc(topC[0])} — <b class="num">${Math.round(topC[1]/total*100)}%</b> (${mln(topC[1])} ₽)</span><span><span class="dot" style="background:var(--muted)"></span>Остальные клиенты</span></div>
+      </div>
+    </div>
+  </div>`;
+  document.querySelectorAll('#v-debt .chip').forEach(b=>b.onclick=()=>{ debtFilter=b.dataset.f;
+    document.querySelectorAll('#v-debt .chip').forEach(c=>c.setAttribute('aria-pressed', c===b)); fillDebtList(); });
+  $('#debtSearch').oninput = e => { debtQuery = e.target.value; fillDebtList(); };
+  fillDebtList();
+}
+function fillDebtList(){
+  const debt = D.debt.clients, maxT = Math.max(...debt.map(c=>c.total), 1), q = debtQuery.trim().toLowerCase();
+  const list = debt.filter(c => (debtFilter==='all' || c.zone===debtFilter) && (!q || (c.client+' '+c.project).toLowerCase().includes(q)));
+  $('#debtList').innerHTML = list.map(c=>{ const id = c.client+'|'+c.project, open = openDebt===id; return `
+    <div class="row click" tabindex="0" role="button" aria-expanded="${open}" data-id="${esc(id)}">
+      <div><div class="t">${esc(c.project)}</div><div class="s">${esc(c.client)}</div></div>
+      <div><div class="amt num">${money(c.total)}</div><div style="text-align:right;margin-top:4px">${c.zone==='red'?`<span class="pill p-red">${c.months} мес · с ${MON[+c.oldest.slice(5)-1]}</span>`:`<span class="pill p-green">текущий</span>`}</div></div>
+      <div class="bar"><i style="width:${(c.total/maxT*100).toFixed(1)}%;background:${c.zone==='red'?'var(--red)':'var(--green)'}"></i></div>
+      ${open?`<div class="detail">${c.items.map(it=>`<div class="it"><span class="m">${ym(it.month)}</span><span class="num">${fmt(it.amount)} ₽</span>
+         <span class="s">${esc(it.service)}${it.doc?' · '+esc(it.doc):''}${it.invoice?' · '+esc(it.invoice):''}</span><span>${edoOk(it)?'<span class="pill p-green">ЭДО ✓</span>':it.edo?'<span class="pill p-orange">не подписан</span>':''}</span>
+         ${it.note?`<div class="n">${esc(it.note)}</div>`:''}</div>`).join('')}
+         <button class="copy" data-copy="${esc(id)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"/></svg>Скопировать напоминание клиенту</button>
+         <div class="fb"></div></div>`:''}
+    </div>`;}).join('') || '<div class="note">Ничего не найдено.</div>';
+  document.querySelectorAll('#debtList .row').forEach(r=>{ const t=()=>{openDebt = openDebt===r.dataset.id?null:r.dataset.id; fillDebtList();};
+    r.onclick = e => { if (!e.target.closest('.detail')) t(); }; r.onkeydown = e => { if (e.target===r && (e.key==='Enter'||e.key===' ')) { e.preventDefault(); t(); } }; });
+  document.querySelectorAll('#debtList .copy').forEach(b=>b.onclick=()=>copyReminder(debt.find(c=>c.client+'|'+c.project===b.dataset.copy), b.nextElementSibling));
+}
+const edoOk = it => /подтвержд/i.test(it.edo) && !/не\s*подтвержд/i.test(it.edo);
+function reminderText(c){
+  const lines = c.items.map(it => {
+    const docs = [it.doc, it.invoice].filter(Boolean).join(', ');
+    return `— ${ym(it.month)}${it.service?' ('+it.service+')':''}${docs?': '+docs:''} — ${fmt(it.amount)} ₽${edoOk(it)?'':' (документы ещё не подписаны в ЭДО)'}`;
+  });
+  return `Добрый день! Напоминаем об оплате по проекту ${c.project}:\n${lines.join('\n')}\n\nИтого к оплате: ${fmt(c.total)} ₽.\nПодскажите, пожалуйста, когда планируется оплата?`;
+}
+function toast(msg){ const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(()=>t.hidden = true, 2200); }
+function copyReminder(c, fb){
+  const text = reminderText(c);
+  const fallback = () => { fb.innerHTML = '<textarea class="fallback" readonly></textarea><div class="note">Выделите текст и скопируйте вручную.</div>'; const ta = fb.querySelector('textarea'); ta.value = text; ta.focus(); ta.select(); };
+  try { navigator.clipboard.writeText(text).then(()=>{ toast('Текст скопирован'); try { tg && tg.HapticFeedback && tg.HapticFeedback.notificationOccurred('success'); } catch(e){} }, fallback); }
+  catch(e){ fallback(); }
+}
+
+/* ---------- Нагрузка ---------- */
+let team = 'all', projAll = false;
+function workdays(month, upTo){ const [y,m] = month.split('-').map(Number); let n = 0; const last = new Date(y, m, 0).getDate();
+  for (let d = 1; d <= last; d++) { const dt = new Date(y, m-1, d); if (upTo && dt > upTo) break; const w = dt.getDay(); if (w && w < 6) n++; } return n; }
+function renderLoad(){
+  const L = D.load, N1 = L.normMin || 120, N2 = L.normMax || 140;
+  const people = L.people.map(p => ({...p, status: p.hours===0 ? 'none' : p.hours>N2 ? 'over' : p.hours>=N1 ? 'norm' : 'under'}));
+  const teams = [...new Set(people.map(p=>p.team))];
+  const total = sum(people, p=>p.hours), filled = people.filter(p=>p.hours>0).length;
+  const now = new Date(L.asOf || D.updatedAt);
+  const pace = N1 * workdays(L.month, now) / workdays(L.month);
+  const list = (team==='all'?people:people.filter(p=>p.team===team)).slice().sort((a,b)=>b.hours-a.hours);
+  const SCALE = Math.max(160, ...people.map(p=>p.hours));
+  const projs = projAll ? L.projects : L.projects.slice(0,8), pmax = Math.max(...L.projects.map(p=>p.hours), 1);
+  const PILL = {norm:'<span class="pill p-green">норма</span>', over:'<span class="pill p-red">переработка</span>', under:'<span class="pill p-orange">ниже нормы</span>', none:'<span class="pill p-grey">нет данных</span>'};
+  const COL = {norm:'var(--green)', over:'var(--red)', under:'var(--orange)', none:'var(--muted)'};
+  $('#v-load').innerHTML = `
+  <div class="grid kpis">
+    <div class="card hero"><div class="lbl">Часов за ${MONF[+L.month.slice(5)-1]}</div><div class="big num">${hrs(total)} ч</div><div class="sub">норма ${N1}–${N2} ч на человека в месяц · к сегодняшнему дню ≈ ${Math.round(pace)} ч</div></div>
+    <div class="card"><div class="lbl">Внесли часы</div><div class="mid num">${filled} / ${people.length}</div><div class="sub">${people.length-filled} без записей</div></div>
+    <div class="card"><div class="lbl">Отстают от темпа</div><div class="mid num" style="color:var(--orange)">${people.filter(p=>p.hours>0&&p.hours<pace*0.85).length}</div><div class="sub">меньше 85% от ${Math.round(pace)} ч</div></div>
+  </div>
+  <div class="grid two">
+    <div class="card"><h2>Сотрудники <small>зелёная зона — норма, черта — темп на сегодня</small></h2>
+      <div class="chips">${['all',...teams].map(k=>`<button class="chip" data-t="${esc(k)}" aria-pressed="${team===k}">${k==='all'?'Все':esc(k)}</button>`).join('')}</div>
+      <div>${list.map(p=>`<div class="person"><div><div style="font-weight:700">${esc(p.name)}</div><div class="small" style="font-size:12px;color:var(--muted)">${esc(p.team)}${p.missed?` · пропусков: ${p.missed}`:''}</div></div>
+        <div style="text-align:right"><div class="num" style="font-weight:700">${hrs(p.hours)} ч</div><div style="margin-top:4px">${PILL[p.status]}</div></div>
+        <div class="track"><div class="norm" style="left:${N1/SCALE*100}%;width:${(N2-N1)/SCALE*100}%"></div>
+          <div class="fill" style="width:${Math.min(p.hours/SCALE,1)*100}%;background:${COL[p.status]}"></div>
+          <div class="pace" style="left:${pace/SCALE*100}%"></div></div></div>`).join('')}</div>
+      ${L.errors && L.errors.length ? `<div class="note" style="color:var(--orange)">Не прочитались таблицы: ${L.errors.map(e=>esc(e.name)).join(', ')}</div>` : ''}
+    </div>
+    <div class="grid">
+      <div class="card"><h2>Часы по месяцам <small>вся команда</small></h2><div id="hours"></div></div>
+      <div class="card"><h2>Проекты <small>часы за месяц</small></h2>
+        <div class="list">${projs.map(p=>`<div class="row"><div><div class="t">${esc(p.name)}</div><div class="s">${p.people} чел.</div></div><div class="amt num">${hrs(p.hours)} ч</div>
+          <div class="bar"><i style="width:${p.hours/pmax*100}%;background:var(--y)"></i></div></div>`).join('')}</div>
+        ${L.projects.length > 8 ? `<button class="more" id="projMore">${projAll?'Свернуть':'Все проекты · '+L.projects.length}</button>` : ''}
+      </div>
+    </div>
+  </div>`;
+  document.querySelectorAll('#v-load .chip[data-t]').forEach(b=>b.onclick=()=>{team=b.dataset.t; renderLoad(); drawHours();});
+  const pm = $('#projMore'); if (pm) pm.onclick = ()=>{projAll=!projAll; renderLoad(); drawHours();};
+}
+
+/* ---------- Закрытие ---------- */
+const STATUS = {
+  'Не начато':['p-grey','var(--muted)'], 'Нет сметы / отчёта':['p-red','var(--red)'], 'Жду УПД':['p-orange','var(--orange)'],
+  'Жду уточнения / вносим правки':['p-orange','var(--orange)'], 'Готово и направлено':['p-y','var(--y)'], 'В ЭДО':['p-green','var(--green)']
+};
+const ORDER = Object.keys(STATUS);
+let cm = null;
+function renderClose(){
+  const C = D.closing; if (cm === null || cm >= C.length) cm = C.length-1;
+  const m = C[cm]; const rank = s => { const i = ORDER.indexOf(s); return i < 0 ? 0 : i; };
+  const rows = m.rows.slice().sort((a,b)=>rank(a.status)-rank(b.status));
+  const cnt = {}; rows.forEach(r=>cnt[r.status]=(cnt[r.status]||0)+1);
+  const done = cnt['В ЭДО']||0, sent = cnt['Готово и направлено']||0, prob = rows.length-done-sent;
+  const keys = [...ORDER.slice().reverse(), ...Object.keys(cnt).filter(k=>!STATUS[k])].filter(s=>cnt[s]);
+  const col = s => (STATUS[s]||['p-grey','var(--muted)'])[1];
+  $('#v-close').innerHTML = `
+  <div class="chips">${C.map((c,i)=>`<button class="chip" data-m="${i}" aria-pressed="${i===cm}">${esc(c.month)}</button>`).join('')}</div>
+  <div class="grid kpis">
+    <div class="card hero"><div class="lbl">Закрыто в ЭДО · ${esc(m.month)}</div><div class="big num">${rows.length?Math.round(done/rows.length*100):0}%</div><div class="sub num">${done} из ${rows.length} документов</div></div>
+    <div class="card"><div class="lbl">Отправлено</div><div class="mid num">${sent}</div><div class="sub">ждём подписания</div></div>
+    <div class="card"><div class="lbl">Требуют внимания</div><div class="mid num" style="color:${prob?'var(--red)':'inherit'}">${prob}</div><div class="sub">нет сметы, ждём УПД, не начато</div></div>
+  </div>
+  <div class="card"><h2>Статусы</h2>
+    <div class="stack">${keys.map(s=>`<i title="${esc(s)}" style="width:${cnt[s]/rows.length*100}%;background:${col(s)}"></i>`).join('')}</div>
+    <div class="legend">${keys.map(s=>`<span><span class="dot" style="background:${col(s)}"></span>${esc(s)} — <b class="num">${cnt[s]}</b></span>`).join('')}</div>
+  </div>
+  <div class="card"><h2>Документы <small>сначала требующие внимания</small></h2>
+    <div class="list">${rows.map(r=>`<div class="row"><div><div class="t">${esc(r.client)}</div><div class="s">${esc(r.entity)}${r.comment?' · '+esc(r.comment):''}${r.date?' · '+esc(r.date):''}</div></div>
+      <div style="align-self:center"><span class="pill ${(STATUS[r.status]||['p-grey'])[0]}">${esc(r.status||'—')}</span></div></div>`).join('')}</div>
+  </div>`;
+  document.querySelectorAll('#v-close .chip').forEach(b=>b.onclick=()=>{cm=+b.dataset.m; renderClose();});
+}
+
+try { const t = localStorage.getItem('tab'); if (['debt','load','close'].includes(t)) view = t; } catch(e){}
+load(false);
+let rt; addEventListener('resize', ()=>{ clearTimeout(rt); rt = setTimeout(()=>{ if (D) { drawTrend(); drawHours(); } }, 150); });
+</script>
+
+</body>
+</html>
