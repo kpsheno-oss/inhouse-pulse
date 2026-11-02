@@ -170,6 +170,14 @@ textarea.search{resize:vertical;min-height:70px}
 .cprose h3{margin:6px 0 0;font:500 11px var(--display);letter-spacing:.08em;text-transform:uppercase;color:var(--y)}
 .crow .t{font-size:14px}
 .cstep .cact{grid-column:auto;justify-content:flex-end}
+.cfloat{position:fixed;left:12px;right:12px;bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:15;max-width:720px;margin:0 auto;background:var(--card2);border:1px solid var(--y);border-radius:18px;padding:10px 12px;box-shadow:0 10px 30px rgba(0,0,0,.55);display:flex;justify-content:space-between;align-items:center;gap:8px 12px;flex-wrap:wrap}
+.cfloat .cact{margin:0;grid-column:auto}
+.cfloat-t{display:flex;flex-direction:column;min-width:0;font-size:12px}.cfloat-t span{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (min-width:860px){.cfloat{bottom:20px}}
+.has-float .wrap{padding-bottom:200px}
+.has-float .toast{bottom:calc(170px + env(safe-area-inset-bottom,0px))}
+@media (min-width:860px){.has-float .toast{bottom:110px}}
+.copy.danger{color:var(--red);border-color:var(--red)}
 #v-close h2 small{margin-left:auto}
 .cpick{grid-template-columns:24px minmax(0,1fr) auto;align-items:start}
 .cpick .click{cursor:pointer;min-width:0}
@@ -298,6 +306,7 @@ function show(v){
   document.querySelectorAll('nav.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.v === v));
   ['debt','load','close','asst'].forEach(k => $('#v-'+k).hidden = !D || k !== v);
   if (D) { const [t,s] = HEAD[v](); $('#title').innerHTML = t; $('#subtitle').textContent = s; }
+  document.body.classList.toggle('has-float', v === 'close' && !!document.querySelector('#v-close .cfloat'));
   try { localStorage.setItem('tab', v); } catch(e){}
   if (D && v === 'debt') drawTrend(); if (D && v === 'load') drawHours();
 }
@@ -499,7 +508,8 @@ const HOLD_ORDER = ['am','lead','asst','acc','client','boss','done'];
 const DL_LABEL = { am:'Сметы и отчёты', app:'Приложения клиентам', docs:'Счета и УПД', edo:'Всё в ЭДО' };
 const CHECKERS = ['не нужна','Аккаунт','Специалист ДО'];
 /* cmon — рабочий месяц, carch — номер месяца из архива (только просмотр); открыт что-то одно */
-let cv = null, cmon = null, carch = null, cfHolder = null, cfAm = null, openRow = null, delSure = false, leaveSure = false;
+let cv = null, cmon = null, carch = null, cfHolder = null, cfAm = null, openRow = null, delSure = false, leaveSure = false, resetSure = false, resetMonthSure = false;
+let groupMeta = {};     // группы «Моих задач» последней отрисовки: ключ → { title, kind } — для плавающей панели
 const sel = new Set();   // галочки в «Моих задачах»: 'группа|id строки'
 const drafts = {};       // несохранённый ввод (ключ → текст); переживает перерисовку, чистится после сохранения
 
@@ -588,12 +598,12 @@ async function api(op, payload, local){
   catch(e) { toast('Не сохранилось: ' + e.message); load(false); return false; }
 }
 /* несколько записей разом: у себя меняем всё сразу, на сервер шлём по очереди, перерисовываем один раз в конце */
-async function apiMany(calls){
+async function apiMany(calls, progress){
   if (!calls.length) return true;
   calls.forEach(c => c.local && c.local(P().db)); renderClose();
   if (DEMO) { toast('Демо: изменения не сохраняются'); return true; }
   let n = 0;
-  try { for (const c of calls) { await send(c.op, c.payload); n++; } rerender(); return true; }
+  try { for (const c of calls) { await send(c.op, c.payload); n++; if (progress && calls.length > 3) toast(progress+': '+n+' из '+calls.length); } rerender(); return true; }
   catch(e) { toast('Сохранилось '+n+' из '+calls.length+': ' + e.message); load(false); return false; }
 }
 function actorName(){ return P().me.name || 'Кто-то'; }
@@ -605,6 +615,16 @@ function stepCall(r, k, val, log){
 function patchCall(r, fields, log){ return { op:'patch', payload:{ path:r.path, fields, log }, local: db => { if (db[r.path]) Object.assign(db[r.path], fields); } }; }
 function doneCall(r, k){ const s = rowState(r).steps.find(x=>x.k===k), prev = (r.steps||{})[k]||{};
   return stepCall(r, k, Object.assign({}, prev, { d:today(), skip:false }), 'готово: «'+(s?s.t:k)+'»'); }
+/* очистить шаги проекта: снимаем все отметки и подпись клиента; «Не нужно» у материалов остаётся, если от аккаунта ничего не требуется */
+function resetCalls(r){
+  const calls = [], st = r.steps || {}, names = {}; rowState(r).steps.forEach(x => names[x.k] = x.t);
+  Object.keys(st).forEach(k => { const v = st[k] || {}, keepSkip = k==='am' && !r.need;
+    if (keepSkip ? (v.skip && !v.d && !v.link) : !(v.d || v.skip || v.link)) return;
+    calls.push(stepCall(r, k, keepSkip ? { skip:true } : null, 'очищен шаг «'+(names[k]||k)+'»')); });
+  if (r.clientSigned) calls.push(patchCall(r, { clientSigned:false }, 'снята отметка о подписи клиента'));
+  return calls;
+}
+const hasProgress = r => resetCalls(r).length > 0;
 const run = c => api(c.op, c.payload, c.local);
 const mark = (r, k, val, log) => run(stepCall(r, k, val, log));
 const patch = (r, fields, log) => run(patchCall(r, fields, log));
@@ -708,7 +728,7 @@ function renderClose(){
   if (!cmon && carch === null && C.length) carch = C.length-1;
   const subs = subTabs(me); if (!subs.some(x=>x[0]===cv)) cv = subs[0][0];
   const { work, arch } = monthOptions(), curV = carch !== null ? 'a:'+carch : 'w:'+cmon;
-  let html = '';
+  let html = ''; groupMeta = {};
   if (work.length + arch.length) html += `<div class="ctop"><label class="msel"><span class="lbl">Месяц</span><select id="cmSel">
       ${work.map(o=>`<option value="${esc(o.v)}"${o.v===curV?' selected':''}>${esc(o.l)}</option>`).join('')}
       ${arch.length?`<optgroup label="Архив — только просмотр">${arch.map(o=>`<option value="${esc(o.v)}"${o.v===curV?' selected':''}>${esc(o.l)}</option>`).join('')}</optgroup>`:''}
@@ -719,7 +739,9 @@ function renderClose(){
     html += `<div class="chips">${subs.map(([k,l])=>`<button class="chip" data-cv="${k}" aria-pressed="${cv===k}">${l}</button>`).join('')}</div>`;
     html += cv==='mine' ? mineHTML() : cv==='board' ? boardHTML() : cv==='team' ? summaryHTML(false)+teamHTML() : setupHTML();
   }
-  $('#v-close').innerHTML = html + (carch === null ? panelHTML() : '');
+  const fl = carch === null ? floatHTML() : '';
+  $('#v-close').innerHTML = html + (carch === null ? panelHTML() : '') + fl;
+  document.body.classList.toggle('has-float', !!fl && view === 'close');
   document.querySelectorAll('#v-close [data-pickall]').forEach(el => { el.indeterminate = el.dataset.some === '1'; });
   const sh = document.querySelector('#v-close .csheet'); if (sh && sheetTop) sh.scrollTop = sheetTop;
   bindClose();
@@ -765,6 +787,20 @@ const ACT_HINT = {
   app:'Отчёт добавляем там, где он помечен.',
   appr:'Если клиент прислал правки — откройте проект и оставьте комментарий.'
 };
+function bulkBtns(g, kind, n){
+  const dis = n ? '' : ' disabled', cnt = n ? ' ('+n+')' : '';
+  return kind==='mark' ? actBtn('Готово'+cnt, `data-bulk="${g}" data-kind="mark"${dis}`)
+    : kind==='remind' ? actBtn('Напомнить'+cnt, `data-bulk="${g}" data-kind="remind"${dis}`) + actBtn('Шаг выполнен', `data-bulk="${g}" data-kind="mark"${dis}`, 'ghost')
+    : actBtn('Клиент подписал'+cnt, `data-bulk="${g}" data-kind="signed"${dis}`) + actBtn('Попросить напомнить', `data-bulk="${g}" data-kind="remindsign"${dis}`, 'ghost');
+}
+/* плавающая панель внизу: видна, пока что-то отмечено, — не надо мотать к кнопке группы */
+function floatHTML(){
+  if (cv !== 'mine' || openRow || !sel.size) return '';
+  const g = [...sel][0].split('|')[0], meta = groupMeta[g]; if (!meta) return '';
+  const ids = new Set(monthRows().map(r=>r.id)), n = [...sel].filter(k=>k.indexOf(g+'|')===0 && ids.has(k.slice(g.length+1))).length; if (!n) return '';
+  return `<div class="cfloat" role="region" aria-label="Выбранные проекты"><div class="cfloat-t"><b>Выбрано: ${n}</b><span>${esc(meta.title)}</span></div>
+    <div class="cact">${bulkBtns(g, meta.kind, n)}<button class="clink" data-unsel>Снять</button></div></div>`;
+}
 function pickRowHTML(g, r, s, kind){
   const key = g+'|'+r.id;
   const note = kind==='remind' ? [r.am||'аккаунт не назначен', s.cur && s.cur.t] : kind==='signed' ? [r.am||'—', r.entity]
@@ -777,11 +813,9 @@ function pickRowHTML(g, r, s, kind){
     <div style="text-align:right">${dots(r, s)}</div></div>`;
 }
 function groupHTML(g, title, hint, items, kind){
+  groupMeta[g] = { title, kind };
   const n = items.filter(x=>sel.has(g+'|'+x.r.id)).length, all = n === items.length, late = items.filter(x=>x.s.late>0).length;
-  const dis = n ? '' : ' disabled', cnt = n ? ' ('+n+')' : '';
-  const btns = kind==='mark' ? actBtn('Готово'+cnt, `data-bulk="${g}" data-kind="mark"${dis}`)
-    : kind==='remind' ? actBtn('Напомнить'+cnt, `data-bulk="${g}" data-kind="remind"${dis}`) + actBtn('Шаг выполнен', `data-bulk="${g}" data-kind="mark"${dis}`, 'ghost')
-    : actBtn('Клиент подписал'+cnt, `data-bulk="${g}" data-kind="signed"${dis}`) + actBtn('Попросить аккаунтов напомнить', `data-bulk="${g}" data-kind="remindsign"${dis}`, 'ghost');
+  const btns = bulkBtns(g, kind, n);
   return `<div class="card"><h2>${esc(title)} <small>${items.length}${late?` · <b style="color:var(--red)">${late} просроч.</b>`:''}</small></h2>
     ${hint?`<div class="note" style="margin:-6px 0 10px">${hint}</div>`:''}
     <div class="cbar"><label class="cbox"><input type="checkbox" data-pickall="${g}" data-some="${n&&!all?1:0}"${all?' checked':''}><span>${all?'Снять все':'Выбрать все'}</span></label><div class="cact">${btns}</div></div>
@@ -862,7 +896,9 @@ function setupHTML(){
       <label>Юрлицо клиента<input id="a-payer"></label>
       <label>Согласование<select id="a-channel"><option>${CH_MAIL}</option><option>${CH_AM}</option></select></label>
       <button class="copy" type="submit">Добавить в ${esc(m.label.toLowerCase())}</button></form></div>
-  ${newMonthCard(m.label)}`;
+  ${newMonthCard(m.label)}
+  ${monthRows().some(hasProgress)?`<div class="card"><h2>Очистить месяц <small>например, после теста</small></h2><div class="note" style="margin:-6px 0 12px">Снимет все отметки шагов и подписи клиентов во всех проектах ${esc(m.label.toLowerCase())}. Проекты, сроки, комментарии и переносы останутся.</div>
+    <div class="cact" style="margin:0"><button class="copy ghost ${resetMonthSure?'danger':''}" id="resetMonth">${resetMonthSure?'Точно очистить все шаги? Нажмите ещё раз':'Очистить все шаги месяца'}</button>${resetMonthSure?'<button class="clink" id="resetMonthNo">Отмена</button>':''}</div></div>`:''}`;
 }
 function archiveHTML(){
   const mm = (D.closing||[])[carch]; if (!mm) return '<div class="card"><div class="note">Архива нет.</div></div>';
@@ -932,6 +968,7 @@ function panelHTML(){
       ${log?`<div class="lbl" style="margin:12px 0 6px">История</div>${log}`:''}
       ${me.canEdit?`<button class="clink" id="delRow" style="color:var(--red);margin-top:10px">${delSure?'Точно удалить? Нажмите ещё раз':'Удалить строку из месяца'}</button>`:''}
     </details>
+    ${me.canEdit && hasProgress(r)?`<div class="cact" style="margin:0"><button class="copy ghost ${resetSure?'danger':''}" id="resetRow">${resetSure?'Точно очистить все шаги? Нажмите ещё раз':'Очистить шаги проекта'}</button>${resetSure?'<button class="clink" id="resetNo">Отмена</button>':''}</div>`:''}
   </div>`;
 }
 async function saveCard(r){
@@ -948,9 +985,9 @@ function closeCard(force){
   const r = monthRows().find(x=>x.id===openRow);
   if (r && !force && isDirty(r)) { leaveSure = true; renderClose(); const sh = document.querySelector('#v-close .csheet'); if (sh) sh.scrollTop = 0; return; }
   if (r && force) dropDrafts(r);
-  openRow = null; delSure = false; leaveSure = false; renderClose();
+  openRow = null; delSure = false; leaveSure = false; resetSure = false; renderClose();
 }
-function openCard(id){ openRow = id; delSure = false; leaveSure = false; renderClose(); }
+function openCard(id){ openRow = id; delSure = false; leaveSure = false; resetSure = false; renderClose(); }
 /* Escape — на весь документ: после перерисовки фокус уходит на body и до #v-close не доходит */
 document.addEventListener('keydown', e => { if (e.key==='Escape' && openRow && view==='close') closeCard(leaveSure); });
 
@@ -960,7 +997,12 @@ function bindClose(){
   root.onclick = async e => {
     const b = e.target.closest('button,[data-open],[data-close]'); if (!b || b.disabled) return;
     const d = b.dataset;
-    if (d.cv) { cv = d.cv; openRow = null; renderClose(); return; }
+    if (d.cv) { cv = d.cv; openRow = null; resetMonthSure = false; renderClose(); return; }
+    if (b.hasAttribute('data-unsel')) { sel.clear(); renderClose(); return; }
+    if (b.id==='resetMonthNo') { resetMonthSure = false; renderClose(); return; }
+    if (b.id==='resetMonth') { if (!resetMonthSure) { resetMonthSure = true; renderClose(); return; } resetMonthSure = false;
+      const calls = [].concat(...monthRows().map(resetCalls)); sel.clear();
+      if (await apiMany(calls, 'Очищаю')) toast('Шаги месяца очищены'); return; }
     if (d.h) { cfHolder = cfHolder===d.h ? null : d.h; renderClose(); return; }
     if (d.am !== undefined && b.classList.contains('chip')) { cfAm = cfAm===d.am ? null : d.am; renderClose(); return; }
     if (d.unf) { if (d.unf!=='am') cfHolder = null; if (d.unf!=='h') cfAm = null; renderClose(); return; }
@@ -990,6 +1032,9 @@ function bindClose(){
     if (b.id==='unsign') { await patch(r, { clientSigned:false }, 'снята отметка о подписи клиента'); return; }
     if (b.id==='pSave2') { if (await saveCard(r)) closeCard(true); return; }
     if (b.id==='pDiscard') { closeCard(true); return; }
+    if (b.id==='resetNo') { resetSure = false; renderClose(); return; }
+    if (b.id==='resetRow') { if (!resetSure) { resetSure = true; renderClose(); return; } resetSure = false;
+      if (await apiMany(resetCalls(r), 'Очищаю')) toast('Шаги проекта очищены'); return; }
     if (b.id==='delRow') { if (!delSure) { delSure = true; renderClose(); return; } openRow = null; delSure = false; dropDrafts(r);
       await api('delete', { path:r.path }, db => { delete db[r.path]; }); toast('Строка удалена'); return; }
   };
@@ -1001,8 +1046,11 @@ function bindClose(){
     if (t.id === 'cmSel') { const v = t.value; if (v.indexOf('a:')===0) carch = +v.slice(2); else { carch = null; cmon = v.slice(2); }
       openRow = null; leaveSure = false; sel.clear(); renderClose(); return; }
     if (t.dataset.draft && t.tagName === 'SELECT') { root.oninput(e); return; }
-    if (t.dataset.pick) { t.checked ? sel.add(t.dataset.pick) : sel.delete(t.dataset.pick); renderClose(); return; }
+    if (t.dataset.pick) { const g = t.dataset.pick.split('|')[0];
+      if (t.checked) { [...sel].forEach(k => { if (k.indexOf(g+'|')!==0) sel.delete(k); }); sel.add(t.dataset.pick); } else sel.delete(t.dataset.pick);
+      renderClose(); return; }
     if (t.dataset.pickall) { const g = t.dataset.pickall, keys = [...root.querySelectorAll('[data-pick]')].map(x=>x.dataset.pick).filter(k=>k.indexOf(g+'|')===0);
+      if (t.checked) [...sel].forEach(k => { if (k.indexOf(g+'|')!==0) sel.delete(k); });
       keys.forEach(k => t.checked ? sel.add(k) : sel.delete(k)); renderClose(); return; }
   };
   root.onkeydown = e => { const t = e.target;
