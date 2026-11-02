@@ -241,6 +241,7 @@ async function load(force){
       D = j;
     }
     $('#state').hidden = true;
+    loadCur = D.load || null; loadSel = null; if (force) Object.keys(loadCache).forEach(k => delete loadCache[k]);
     const t = new Date(D.updatedAt);
     $('#upd').innerHTML = 'Обновлено<br>' + t.toLocaleDateString('ru-RU',{day:'numeric',month:'short'}) + ', ' + t.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
     const full = D.role !== 'manager' && !!D.load;
@@ -308,7 +309,7 @@ function drawHours(){
   const y = v => T + (H-T-B)*(1-v/top);
   let s = '';
   for (let v=0; v<=top; v+=500) s += `<line class="gl" x1="${L}" x2="${W}" y1="${y(v)}" y2="${y(v)}"/><text x="${L-6}" y="${y(v)+4}" text-anchor="end">${v?(v/1000).toLocaleString('ru-RU')+'т':'0'}</text>`;
-  pts.forEach((p,i)=>{ const x = L + i*bw + bw*0.2, w = bw*0.6, cur = p[0] === D.load.month;
+  pts.forEach((p,i)=>{ const x = L + i*bw + bw*0.2, w = bw*0.6, cur = p[0] === (loadCur||D.load).month;
     s += `<rect x="${x}" y="${y(p[1])}" width="${w}" height="${Math.max(y(0)-y(p[1]),0)}" rx="3" fill="${cur?'rgba(255,212,0,.25)':'#FFD400'}" ${cur?'stroke="#FFD400" stroke-dasharray="3 3"':''}/>
     <text x="${x+w/2}" y="${H-6}" text-anchor="middle">${MON[+p[0].slice(5)-1]}</text>
     <text x="${x+w/2}" y="${y(p[1])-6}" text-anchor="middle" style="fill:var(--ink2);font-size:10px">${fmt(p[1])}</text>`; });
@@ -389,6 +390,31 @@ function copyReminder(c, fb){
 
 /* ---------- Нагрузка ---------- */
 let team = 'all', projAll = false;
+/* выбор месяца: loadCur — текущий месяц из основной загрузки, loadCache — уже полученные прошлые месяцы */
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+let loadCur = null, loadSel = null, loadBusy = false; const loadCache = {};
+function loadMonths(){ const h = (loadCur && loadCur.history) || []; const ms = h.map(p=>p[0]); if (loadCur && ms.indexOf(loadCur.month) < 0) ms.push(loadCur.month); return ms.slice(-12); }
+async function pickLoadMonth(m){
+  if (loadBusy) return;
+  if (!m || m === loadCur.month) { loadSel = null; D.load = loadCur; }
+  else if (loadCache[m]) { loadSel = m; D.load = loadCache[m]; }
+  else {
+    loadBusy = true; loadSel = m; renderLoad();
+    try {
+      let L;
+      if (DEMO) L = {...loadCur, month:m};
+      else {
+        const auth = tg && tg.initData ? tg.initData : '';
+        const r = await fetch(API_URL + '?auth=' + encodeURIComponent(auth) + '&loadMonth=' + encodeURIComponent(m));
+        const j = await r.json(); if (j.error) throw new Error(j.error);
+        L = j.load; if (!L || L.month !== m) throw new Error('Сервер пока не умеет отдавать прошлые месяцы — нужно обновить Apps Script.');
+      }
+      loadCache[m] = L; D.load = L;
+    } catch (e) { loadSel = null; D.load = loadCur; toast(e.message); }
+    finally { loadBusy = false; }
+  }
+  renderLoad(); drawHours(); if (view === 'load') { const [t,s] = HEAD.load(); $('#title').innerHTML = t; $('#subtitle').textContent = s; }
+}
 function workdays(month, upTo){ const [y,m] = month.split('-').map(Number); let n = 0; const last = new Date(y, m, 0).getDate();
   for (let d = 1; d <= last; d++) { const dt = new Date(y, m-1, d); if (upTo && dt > upTo) break; const w = dt.getDay(); if (w && w < 6) n++; } return n; }
 function renderLoad(){
@@ -403,11 +429,14 @@ function renderLoad(){
   const projs = projAll ? L.projects : L.projects.slice(0,8), pmax = Math.max(...L.projects.map(p=>p.hours), 1);
   const PILL = {norm:'<span class="pill p-green">норма</span>', over:'<span class="pill p-red">переработка</span>', under:'<span class="pill p-orange">ниже нормы</span>', none:'<span class="pill p-grey">нет данных</span>'};
   const COL = {norm:'var(--green)', over:'var(--red)', under:'var(--orange)', none:'var(--muted)'};
+  const past = loadCur && L.month !== loadCur.month, months = loadMonths(), shown = loadSel || L.month;
   $('#v-load').innerHTML = `
+  ${months.length > 1 ? `<div class="chips">${months.map(m=>`<button class="chip" data-lm="${m}" aria-pressed="${m===shown}">${cap(MONF[+m.slice(5)-1])}${m.slice(0,4)!==months[months.length-1].slice(0,4)?' '+m.slice(0,4):''}</button>`).join('')}</div>` : ''}
+  ${loadBusy ? `<div class="note">Загружаю ${MONF[+loadSel.slice(5)-1]}…</div>` : ''}
   <div class="grid kpis">
-    <div class="card hero"><div class="lbl">Часов за ${MONF[+L.month.slice(5)-1]}</div><div class="big num">${hrs(total)} ч</div><div class="sub">норма ${N1}–${N2} ч на человека в месяц · к сегодняшнему дню ≈ ${Math.round(pace)} ч</div></div>
+    <div class="card hero"><div class="lbl">Часов за ${MONF[+L.month.slice(5)-1]}</div><div class="big num">${hrs(total)} ч</div><div class="sub">норма ${N1}–${N2} ч на человека в месяц${past?' · месяц закрыт':' · к сегодняшнему дню ≈ '+Math.round(pace)+' ч'}</div></div>
     <div class="card"><div class="lbl">Внесли часы</div><div class="mid num">${filled} / ${people.length}</div><div class="sub">${people.length-filled} без записей</div></div>
-    <div class="card"><div class="lbl">Отстают от темпа</div><div class="mid num" style="color:var(--orange)">${people.filter(p=>p.hours>0&&p.hours<pace*0.85).length}</div><div class="sub">меньше 85% от ${Math.round(pace)} ч</div></div>
+    <div class="card"><div class="lbl">${past?'Ниже нормы':'Отстают от темпа'}</div><div class="mid num" style="color:var(--orange)">${people.filter(p=>p.hours>0&&p.hours<pace*0.85).length}</div><div class="sub">меньше 85% от ${Math.round(pace)} ч</div></div>
   </div>
   <div class="grid two">
     <div class="card"><h2>Сотрудники <small>зелёная зона — норма, черта — темп на сегодня</small></h2>
@@ -428,6 +457,7 @@ function renderLoad(){
       </div>
     </div>
   </div>`;
+  document.querySelectorAll('#v-load .chip[data-lm]').forEach(b=>b.onclick=()=>pickLoadMonth(b.dataset.lm));
   document.querySelectorAll('#v-load .chip[data-t]').forEach(b=>b.onclick=()=>{team=b.dataset.t; renderLoad(); drawHours();});
   const pm = $('#projMore'); if (pm) pm.onclick = ()=>{projAll=!projAll; renderLoad(); drawHours();};
 }
