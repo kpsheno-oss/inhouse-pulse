@@ -489,15 +489,37 @@ const days = n => n+' '+plural(n,'день','дня','дней');
 function monthDoc(){ return P().db['months/'+cmon] || null; }
 function monthRows(){ const pre = 'months/'+cmon+'/rows/'; const db = P().db;
   return Object.keys(db).filter(p=>p.indexOf(pre)===0).map(p=>Object.assign({ id:p.slice(pre.length), path:p }, db[p])); }
+/* Как клиент согласует закрытие:
+   'package' — клиент согласует готовый набор: приложение + счёт + УПД (+ отчёт, где он нужен). По умолчанию.
+   'advance' — клиент заранее согласовал приложение на будущий период, документы делаем после. Было так только в октябре 2026.
+   Ключи шагов в обоих режимах одни и те же — меняется только порядок, поэтому уже отмеченные шаги не теряются. */
+const APPROVAL = { package:'Готовый пакет: приложение, счёт, УПД и отчёт', advance:'Приложение согласовано заранее (на будущий период)' };
+function approvalMode(m){ m = m || monthDoc() || {}; if (APPROVAL[m.approval]) return m.approval;
+  const id = m.id || cmon || ''; return id && id <= '2026-10' ? 'advance' : 'package'; }
+const needsReport = r => /отч[её]т/i.test(r.need||'');
+function dlLabel(k, mode){ return k==='app' && (mode||approvalMode())==='package' ? 'Пакет документов клиенту' : DL_LABEL[k]; }
 function stepsFor(r){
+  const pack = approvalMode()==='package';
   const s = [{k:'am', t: r.need ? 'От аккаунта: '+r.need : 'Материалы от аккаунта', who:'am', dl:'am'}];
-  if (r.checker==='Аккаунт') s.push({k:'chk', t:'Аккаунт проверил приложение и суммы', who:'am', dl:'app'});
-  if (r.checker==='Специалист ДО') s.push({k:'chk', t:'Специалист ДО проверил приложение и суммы', who:'lead', dl:'app'});
-  s.push({k:'app', t:'Приложение отправлено клиенту', who:'asst', dl:'app'});
-  s.push(r.channel===CH_AM ? {k:'appr', t:'Аккаунт получил согласование или правки от клиента', who:'am'}
-                           : {k:'appr', t:'Клиент согласовал приложение', who:'client'});
-  if (r.entity==='ООО') { s.push({k:'bill', t:'Счёт отправлен бухгалтеру', who:'asst', dl:'docs'}); s.push({k:'upd', t:'УПД получен от бухгалтера', who:'acc'}); }
-  else s.push({k:'docs', t:'Счёт и УПД подготовлены (номер из Контура, УПД на service-online)', who:'asst', dl:'docs'});
+  const chkDl = pack ? 'docs' : 'app';
+  if (r.checker==='Аккаунт') s.push({k:'chk', t:'Аккаунт проверил приложение и суммы', who:'am', dl:chkDl});
+  if (r.checker==='Специалист ДО') s.push({k:'chk', t:'Специалист ДО проверил приложение и суммы', who:'lead', dl:chkDl});
+  const docs = () => {
+    if (r.entity==='ООО') { s.push({k:'bill', t: pack ? 'Приложение готово, счёт отправлен бухгалтеру' : 'Счёт отправлен бухгалтеру', who:'asst', dl:'docs'}); s.push({k:'upd', t:'УПД получен от бухгалтера', who:'acc'}); }
+    else s.push({k:'docs', t: (pack ? 'Приложение, счёт и УПД подготовлены' : 'Счёт и УПД подготовлены')+' (номер из Контура, УПД на service-online)', who:'asst', dl:'docs'});
+  };
+  if (pack) {
+    const set = 'приложение, счёт, УПД' + (needsReport(r) ? ', отчёт' : '');
+    docs();
+    s.push({k:'app', t:'Пакет отправлен клиенту: '+set, who:'asst', dl:'app'});
+    s.push(r.channel===CH_AM ? {k:'appr', t:'Аккаунт получил от клиента согласование пакета или правки', who:'am'}
+                             : {k:'appr', t:'Клиент согласовал пакет документов', who:'client'});
+  } else {
+    s.push({k:'app', t:'Приложение отправлено клиенту', who:'asst', dl:'app'});
+    s.push(r.channel===CH_AM ? {k:'appr', t:'Аккаунт получил согласование или правки от клиента', who:'am'}
+                             : {k:'appr', t:'Клиент согласовал приложение', who:'client'});
+    docs();
+  }
   s.push({k:'edo', t:'Выгружено в ЭДО', who:'asst', dl:'edo'});
   s.push({k:'sign', t:'Подписано нашим руководителем в ЭДО', who:'boss'});
   return s;
@@ -554,8 +576,8 @@ function patch(r, fields, log){
 function remindText(r, rs){
   const first = (r.am||'').split(' ')[0], ml = (monthDoc()||{}).label ? monthDoc().label.toLowerCase() : '';
   const due = rs.due ? (rs.late>0 ? 'Срок был '+dd(rs.due)+', уже '+days(rs.late)+' просрочки.' : 'Срок — '+dd(rs.due)+'.') : '';
-  if (rs.cur && rs.cur.k==='appr') return first+', привет! По '+r.project+' за '+ml+' приложение у клиента на согласовании. Пришли, пожалуйста, его ответ или правки из чата — без этого не можем выгрузить документы в ЭДО.';
-  if (rs.cur && rs.cur.k==='chk') return first+', привет! По '+r.project+' за '+ml+' нужна твоя проверка приложения и сумм перед отправкой клиенту. '+due;
+  if (rs.cur && rs.cur.k==='appr') return first+', привет! По '+r.project+' за '+ml+(approvalMode()==='package'?' пакет документов (приложение, счёт, УПД'+(needsReport(r)?', отчёт':'')+')':' приложение')+' у клиента на согласовании. Пришли, пожалуйста, его ответ или правки из чата — без этого не можем выгрузить документы в ЭДО.';
+  if (rs.cur && rs.cur.k==='chk') return first+', привет! По '+r.project+' за '+ml+' нужна твоя проверка приложения и сумм'+(approvalMode()==='package'?' — после неё готовим счёт и УПД и отправляем клиенту весь пакет. ':' перед отправкой клиенту. ')+due;
   return first+', привет! Для закрытия за '+ml+' по проекту '+r.project+' жду от тебя: '+(r.need||'материалы для закрытия')+'. '+due+' Отметь, пожалуйста, «Сдал(а)» в Пульсе → Закрытие.';
 }
 function signText(r){
@@ -630,7 +652,8 @@ function summaryHTML(){
   monthRows().forEach(r=>{ const s = rowState(r); cnt[s.holder][0]++; if (s.late>0) cnt[s.holder][1]++; });
   const total = monthRows().length;
   return `<div class="card"><h2>${esc(m.label)} <small>${cnt.done[0]} из ${total} закрыто</small></h2>
-    <div class="chips" style="margin-bottom:12px">${Object.keys(DL_LABEL).filter(k=>dl[k]).map(k=>`<span class="pill ${dl[k]<t?'p-red':dl[k]===t?'p-orange':'p-grey'}">${DL_LABEL[k]} до ${dd(dl[k])}</span>`).join('')}</div>
+    <div class="chips" style="margin-bottom:12px">${dlKeys(approvalMode()).filter(k=>dl[k]).map(k=>`<span class="pill ${dl[k]<t?'p-red':dl[k]===t?'p-orange':'p-grey'}">${dlLabel(k)} до ${dd(dl[k])}</span>`).join('')}</div>
+    <div class="note" style="margin:-4px 0 12px">Согласование: ${esc(APPROVAL[approvalMode()]).toLowerCase()}</div>
     <div class="cballs">${HOLD_ORDER.map(k=>`<button class="cball" data-h="${k}" aria-pressed="${cfHolder===k}" style="--c:${WHO[k][1]}">
       <span class="n num">${cnt[k][0]}</span><span class="l">${k==='done'?'Закрыто':'Ждут: '+WHO[k][0].toLowerCase()}</span>${k!=='done'&&cnt[k][1]?`<span class="x">${cnt[k][1]} просроч.</span>`:''}</button>`).join('')}</div></div>`;
 }
@@ -695,13 +718,17 @@ function nextMonthInfo(){
   const id = y+'-'+String(mo).padStart(2,'0');
   return { id, label: MONF[mo-1][0].toUpperCase()+MONF[mo-1].slice(1)+' '+y, y, mo };
 }
+const dlKeys = mode => mode==='package' ? ['am','docs','app','edo'] : ['am','app','docs','edo'];
 function setupHTML(){
-  const m = monthDoc(), dl = m.dl||{}, me = P().me, n = nextMonthInfo(), exists = P().months.indexOf(n.id)>=0;
+  const m = monthDoc(), dl = m.dl||{}, me = P().me, n = nextMonthInfo(), exists = P().months.indexOf(n.id)>=0, mode = approvalMode();
   const ams = (P().team||[]).filter(t=>t.role==='Аккаунт').map(t=>t.name);
   const amOpts = [...new Set(ams.concat(monthRows().map(r=>r.am).filter(Boolean)))];
   return `<div class="card"><h2>Сроки <small>${esc(m.label)}</small></h2>
-    <form id="dlForm" class="cform">${Object.keys(DL_LABEL).map(k=>`<label>${DL_LABEL[k]}<input type="date" id="dl-${k}" value="${esc(dl[k]||'')}"></label>`).join('')}
-    <button class="copy" type="submit">Сохранить сроки</button></form></div>
+    <form id="dlForm" class="cform">
+      <label>Как клиент согласует<select id="dl-mode">${Object.keys(APPROVAL).map(k=>`<option value="${k}"${mode===k?' selected':''}>${esc(APPROVAL[k])}</option>`).join('')}</select></label>
+      ${dlKeys(mode).map(k=>`<label>${dlLabel(k,mode)}<input type="date" id="dl-${k}" value="${esc(dl[k]||'')}"></label>`).join('')}
+    <button class="copy" type="submit">Сохранить</button></form>
+    <div class="note" style="margin-top:10px">${mode==='package'?'Ассистент собирает приложение, счёт, УПД и (где нужно) отчёт и отправляет клиенту одним пакетом. Клиент согласует всё сразу, потом выгружаем в ЭДО.':'Клиент уже согласовал приложение заранее — после согласования готовим счёт и УПД и выгружаем в ЭДО.'}</div></div>
   <div class="card"><h2>Добавить проект или доп. работу <small>доп. кост и спецпроект — отдельной строкой</small></h2>
     <form id="addForm" class="cform">
       <label>Проект<input id="a-project" required placeholder="Например, Родина — спецпроект"></label>
@@ -712,7 +739,7 @@ function setupHTML(){
       <label>Юрлицо клиента<input id="a-payer"></label>
       <label>Согласование<select id="a-channel"><option>${CH_MAIL}</option><option>${CH_AM}</option></select></label>
       <button class="copy" type="submit">Добавить в ${esc(m.label.toLowerCase())}</button></form></div>
-  <div class="card"><h2>Новый месяц</h2><div class="note" style="margin:-6px 0 12px">Проекты скопируются из ${esc(m.label.toLowerCase())} с теми же аккаунтами и пометками, шаги — с нуля. Сроки встанут на 3, 5, 7 и 10 число, их можно поменять.</div>
+  <div class="card"><h2>Новый месяц</h2><div class="note" style="margin:-6px 0 12px">Проекты скопируются из ${esc(m.label.toLowerCase())} с теми же аккаунтами и пометками, шаги — с нуля. Согласование — готовым пакетом документов. Сроки встанут на 3, 5, 7 и 10 число, их можно поменять.</div>
     ${exists?`<div class="note">${esc(n.label)} уже открыт.</div>`:actBtn('Открыть '+esc(n.label.toLowerCase()), 'id="newMonth"')}</div>`;
 }
 function archiveHTML(){
@@ -804,7 +831,8 @@ function bindClose(){
   root.onsubmit = async e => {
     e.preventDefault(); const f = e.target;
     if (f.id==='dlForm') { const dl = {}; Object.keys(DL_LABEL).forEach(k=>{ const v = $('#dl-'+k).value; if (v) dl[k]=v; });
-      await api('patch', { path:'months/'+cmon, fields:{ dl } }, db => { db['months/'+cmon].dl = dl; }); toast('Сроки сохранены'); }
+      const approval = $('#dl-mode').value;
+      await api('patch', { path:'months/'+cmon, fields:{ dl, approval } }, db => { Object.assign(db['months/'+cmon], { dl, approval }); }); toast('Сохранено'); }
     if (f.id==='addForm') { const p = $('#a-project').value.trim(); if (!p) return;
       const id = 'r' + Date.now().toString(36), path = 'months/'+cmon+'/rows/'+id;
       const data = { project:p, am:$('#a-am').value, entity:$('#a-entity').value, kind:$('#a-kind').value, need:$('#a-need').value.trim(), payer:$('#a-payer').value.trim(),
@@ -818,7 +846,9 @@ function bindClose(){
   const nm = $('#newMonth'); if (nm) nm.onclick = async () => {
     nm.disabled = true; const n = nextMonthInfo(); let cy = n.y, cmo = n.mo+1; if (cmo>12) { cmo=1; cy++; }
     const d = day => cy+'-'+String(cmo).padStart(2,'0')+'-'+String(day).padStart(2,'0');
-    const j = await api('newMonth', { from:cmon, to:n.id, label:n.label, open:d(1), dl:{ am:d(3), app:d(5), docs:d(7), edo:d(10) } });
+    const pack = approvalMode({ id:n.id })==='package';
+    const dl = pack ? { am:d(3), docs:d(5), app:d(7), edo:d(10) } : { am:d(3), app:d(5), docs:d(7), edo:d(10) };
+    const j = await api('newMonth', { from:cmon, to:n.id, label:n.label, open:d(1), dl, approval: pack?'package':'advance' });
     if (j) { cmon = n.id; renderClose(); toast(n.label+' открыт'); }
   };
 }
