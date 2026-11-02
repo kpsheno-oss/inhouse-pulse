@@ -897,8 +897,8 @@ function setupHTML(){
       <label>Согласование<select id="a-channel"><option>${CH_MAIL}</option><option>${CH_AM}</option></select></label>
       <button class="copy" type="submit">Добавить в ${esc(m.label.toLowerCase())}</button></form></div>
   ${newMonthCard(m.label)}
-  ${monthRows().some(hasProgress)?`<div class="card"><h2>Очистить месяц <small>например, после теста</small></h2><div class="note" style="margin:-6px 0 12px">Снимет все отметки шагов и подписи клиентов во всех проектах ${esc(m.label.toLowerCase())}. Проекты, сроки, комментарии и переносы останутся.</div>
-    <div class="cact" style="margin:0"><button class="copy ghost ${resetMonthSure?'danger':''}" id="resetMonth">${resetMonthSure?'Точно очистить все шаги? Нажмите ещё раз':'Очистить все шаги месяца'}</button>${resetMonthSure?'<button class="clink" id="resetMonthNo">Отмена</button>':''}</div></div>`:''}`;
+  ${(()=>{ const any = monthRows().some(hasProgress); return `<div class="card"><h2>Очистить месяц <small>например, после теста</small></h2><div class="note" style="margin:-6px 0 12px">Снимет все отметки шагов и подписи клиентов во всех проектах ${esc(m.label.toLowerCase())}. Проекты, сроки, комментарии и переносы останутся.</div>
+    <div class="cact" style="margin:0"><button class="copy ghost ${resetMonthSure?'danger':''}" id="resetMonth"${any?'':' disabled'}>${!any?'Отметок нет — очищать нечего':resetMonthSure?'Точно очистить все шаги? Нажмите ещё раз':'Очистить все шаги месяца'}</button>${resetMonthSure?'<button class="clink" id="resetMonthNo">Отмена</button>':''}</div></div>`; })()}`;
 }
 function archiveHTML(){
   const mm = (D.closing||[])[carch]; if (!mm) return '<div class="card"><div class="note">Архива нет.</div></div>';
@@ -968,7 +968,7 @@ function panelHTML(){
       ${log?`<div class="lbl" style="margin:12px 0 6px">История</div>${log}`:''}
       ${me.canEdit?`<button class="clink" id="delRow" style="color:var(--red);margin-top:10px">${delSure?'Точно удалить? Нажмите ещё раз':'Удалить строку из месяца'}</button>`:''}
     </details>
-    ${me.canEdit && hasProgress(r)?`<div class="cact" style="margin:0"><button class="copy ghost ${resetSure?'danger':''}" id="resetRow">${resetSure?'Точно очистить все шаги? Нажмите ещё раз':'Очистить шаги проекта'}</button>${resetSure?'<button class="clink" id="resetNo">Отмена</button>':''}</div>`:''}
+    ${me.canEdit?`<div class="cact" style="margin:0"><button class="copy ghost ${resetSure?'danger':''}" id="resetRow"${hasProgress(r)?'':' disabled'}>${!hasProgress(r)?'Шаги проекта не отмечены':resetSure?'Точно очистить все шаги? Нажмите ещё раз':'Очистить шаги проекта'}</button>${resetSure?'<button class="clink" id="resetNo">Отмена</button>':''}</div>`:''}
   </div>`;
 }
 async function saveCard(r){
