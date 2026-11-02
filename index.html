@@ -169,6 +169,29 @@ textarea.search{resize:vertical;min-height:70px}
 .cprose p,.cprose ul{margin:0}.cprose ul{padding-left:18px;display:flex;flex-direction:column;gap:4px}
 .cprose h3{margin:6px 0 0;font:500 11px var(--display);letter-spacing:.08em;text-transform:uppercase;color:var(--y)}
 .crow .t{font-size:14px}
+.cstep .cact{grid-column:auto;justify-content:flex-end}
+#v-close h2 small{margin-left:auto}
+.cpick{grid-template-columns:24px minmax(0,1fr) auto;align-items:start}
+.cpick .click{cursor:pointer;min-width:0}
+.cbox{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;font-weight:600;color:var(--ink2);padding-top:1px}
+.cbox input{width:20px;height:20px;accent-color:var(--y);margin:0;cursor:pointer}
+.cbar{display:flex;justify-content:space-between;align-items:center;gap:8px 12px;flex-wrap:wrap;padding:8px 12px;background:var(--card2);border-radius:14px;margin-bottom:8px}
+.cbar .cact{margin:0;grid-column:auto}
+.copy:disabled{cursor:default}
+.ctop{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:2px}
+.msel{display:flex;align-items:center;gap:10px}
+.msel select{background:var(--card2);border:1px solid var(--line2);border-radius:999px;color:var(--ink);font:700 13px var(--body);padding:8px 14px;cursor:pointer}
+.msel select:focus{outline:none;border-color:var(--y)}
+.cfilt{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:-4px 0 12px}
+.cfilt .chip{padding:5px 11px}
+.cwarn{display:flex;justify-content:space-between;align-items:center;gap:8px 12px;flex-wrap:wrap;background:var(--orange-soft);color:var(--orange);font-weight:700;font-size:13px;border-radius:14px;padding:10px 12px}
+.cdet{display:flex;flex-direction:column;gap:10px}
+.cdet>label{display:flex;flex-direction:column;gap:6px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.cdet>label .search{margin:0;text-transform:none;letter-spacing:0;font-weight:500}
+.cform textarea,.cdet textarea{font:500 14px var(--body)}
+details.cmore summary{cursor:pointer;color:var(--muted);font:600 12px var(--body);text-decoration:underline;list-style:none}
+details.cmore summary::-webkit-details-marker{display:none}
+details.cmore[open] summary{margin-bottom:4px}
 
 </style>
 
@@ -468,7 +491,6 @@ const STATUS = {
   'Жду уточнения / вносим правки':['p-orange','var(--orange)'], 'Готово и направлено':['p-y','var(--y)'], 'В ЭДО':['p-green','var(--green)']
 };
 const ORDER = Object.keys(STATUS);
-let cm = null;
 /* ---------- Закрытие: рабочее (шаги, мяч, напоминания) ---------- */
 const CH_MAIL = 'Ассистент: правки на почте', CH_AM = 'Через аккаунта: правки в чате';
 const WHO = { am:['Аккаунт','#FF9B3D'], lead:['Специалист ДО','#F27BB0'], asst:['Ассистент','#FFD400'], client:['Клиент','#5FD1C2'],
@@ -476,7 +498,10 @@ const WHO = { am:['Аккаунт','#FF9B3D'], lead:['Специалист ДО'
 const HOLD_ORDER = ['am','lead','asst','acc','client','boss','done'];
 const DL_LABEL = { am:'Сметы и отчёты', app:'Приложения клиентам', docs:'Счета и УПД', edo:'Всё в ЭДО' };
 const CHECKERS = ['не нужна','Аккаунт','Специалист ДО'];
-let cv = null, cmon = null, cfHolder = null, cfAm = null, openRow = null, delSure = false;
+/* cmon — рабочий месяц, carch — номер месяца из архива (только просмотр); открыт что-то одно */
+let cv = null, cmon = null, carch = null, cfHolder = null, cfAm = null, openRow = null, delSure = false, leaveSure = false;
+const sel = new Set();   // галочки в «Моих задачах»: 'группа|id строки'
+const drafts = {};       // несохранённый ввод (ключ → текст); переживает перерисовку, чистится после сохранения
 
 const P = () => D.pulse || { me:{}, team:[], months:[], db:{} };
 const today = () => { const d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
@@ -491,11 +516,13 @@ function monthRows(){ const pre = 'months/'+cmon+'/rows/'; const db = P().db;
   return Object.keys(db).filter(p=>p.indexOf(pre)===0).map(p=>Object.assign({ id:p.slice(pre.length), path:p }, db[p])); }
 /* Как клиент согласует закрытие:
    'package' — клиент согласует готовый набор: приложение + счёт + УПД (+ отчёт, где он нужен). По умолчанию.
-   'advance' — клиент заранее согласовал приложение на будущий период, документы делаем после. Было так только в октябре 2026.
+   'advance' — клиент заранее согласовал приложение на будущий период, документы делаем после. Было так только в октябре 2026,
+              поэтому выбор режима показываем только для октября и раньше.
    Ключи шагов в обоих режимах одни и те же — меняется только порядок, поэтому уже отмеченные шаги не теряются. */
 const APPROVAL = { package:'Готовый пакет: приложение, счёт, УПД и отчёт', advance:'Приложение согласовано заранее (на будущий период)' };
 function approvalMode(m){ m = m || monthDoc() || {}; if (APPROVAL[m.approval]) return m.approval;
   const id = m.id || cmon || ''; return id && id <= '2026-10' ? 'advance' : 'package'; }
+const legacyMonth = () => (cmon||'') <= '2026-10' || (monthDoc()||{}).approval === 'advance';
 const needsReport = r => /отч[её]т/i.test(r.need||'');
 function dlLabel(k, mode){ return k==='app' && (mode||approvalMode())==='package' ? 'Пакет документов клиенту' : DL_LABEL[k]; }
 function stepsFor(r){
@@ -546,31 +573,41 @@ function sortRows(list, byAm){
 }
 
 /* ---- запись на сервер (сначала меняем у себя, потом сохраняем) ---- */
+async function send(op, payload){
+  const r = await fetch(API_URL, { method:'POST', body: JSON.stringify(Object.assign({ auth: tg.initData, op, month: cmon }, payload)) });
+  const j = await r.json();
+  if (j.error) throw new Error(j.error);
+  if (j.pulse) D.pulse = j.pulse;
+  return j;
+}
+function rerender(){ renderClose(); if (view==='asst') renderAsst(); }
 async function api(op, payload, local){
-  const me = P().me;
   if (local) { local(P().db); renderClose(); }
   if (DEMO) { toast('Демо: изменения не сохраняются'); return true; }
-  try {
-    const r = await fetch(API_URL, { method:'POST', body: JSON.stringify(Object.assign({ auth: tg.initData, op, month: cmon }, payload)) });
-    const j = await r.json();
-    if (j.error) throw new Error(j.error);
-    if (j.pulse) D.pulse = j.pulse;
-    renderClose(); if (view==='asst') renderAsst();
-    return j;
-  } catch(e) {
-    toast('Не сохранилось: ' + e.message); load(false); return false;
-  }
+  try { const j = await send(op, payload); rerender(); return j; }
+  catch(e) { toast('Не сохранилось: ' + e.message); load(false); return false; }
+}
+/* несколько записей разом: у себя меняем всё сразу, на сервер шлём по очереди, перерисовываем один раз в конце */
+async function apiMany(calls){
+  if (!calls.length) return true;
+  calls.forEach(c => c.local && c.local(P().db)); renderClose();
+  if (DEMO) { toast('Демо: изменения не сохраняются'); return true; }
+  let n = 0;
+  try { for (const c of calls) { await send(c.op, c.payload); n++; } rerender(); return true; }
+  catch(e) { toast('Сохранилось '+n+' из '+calls.length+': ' + e.message); load(false); return false; }
 }
 function actorName(){ return P().me.name || 'Кто-то'; }
-function mark(r, k, val, log){
-  return api('step', { path:r.path, k, val, log }, db => {
-    const row = db[r.path]; row.steps = Object.assign({}, row.steps||{});
-    if (val===null) delete row.steps[k]; else row.steps[k] = Object.assign({}, val, { by: actorName() });
-  });
+function stepCall(r, k, val, log){
+  return { op:'step', payload:{ path:r.path, k, val, log }, local: db => {
+    const row = db[r.path]; if (!row) return; row.steps = Object.assign({}, row.steps||{});
+    if (val===null) delete row.steps[k]; else row.steps[k] = Object.assign({}, val, { by: actorName() }); } };
 }
-function patch(r, fields, log){
-  return api('patch', { path:r.path, fields, log }, db => { Object.assign(db[r.path], fields); });
-}
+function patchCall(r, fields, log){ return { op:'patch', payload:{ path:r.path, fields, log }, local: db => { if (db[r.path]) Object.assign(db[r.path], fields); } }; }
+function doneCall(r, k){ const s = rowState(r).steps.find(x=>x.k===k), prev = (r.steps||{})[k]||{};
+  return stepCall(r, k, Object.assign({}, prev, { d:today(), skip:false }), 'готово: «'+(s?s.t:k)+'»'); }
+const run = c => api(c.op, c.payload, c.local);
+const mark = (r, k, val, log) => run(stepCall(r, k, val, log));
+const patch = (r, fields, log) => run(patchCall(r, fields, log));
 
 /* ---- тексты напоминаний ---- */
 function remindText(r, rs){
@@ -592,21 +629,39 @@ async function sendReminder(r, text, btn){
   if (btn) btn.disabled = false;
   if (j) { toast('Бот отправил напоминание: ' + r.am); try { tg && tg.HapticFeedback && tg.HapticFeedback.notificationOccurred('success'); } catch(e){} }
 }
+function showFallback(fb, text){
+  if (!fb) return; fb.innerHTML = '<textarea class="fallback" readonly></textarea><div class="note">Выделите текст и скопируйте вручную.</div>';
+  const ta = fb.querySelector('textarea'); ta.value = text; ta.focus(); ta.select();
+}
 function copyText(text, fb){
-  const fallback = () => { if (!fb) return; fb.innerHTML = '<textarea class="fallback" readonly></textarea><div class="note">Выделите текст и скопируйте вручную.</div>'; const ta = fb.querySelector('textarea'); ta.value = text; ta.focus(); ta.select(); };
-  try { navigator.clipboard.writeText(text).then(()=>toast('Текст скопирован'), fallback); } catch(e){ fallback(); }
+  try { navigator.clipboard.writeText(text).then(()=>toast('Текст скопирован'), ()=>showFallback(fb, text)); } catch(e){ showFallback(fb, text); }
+}
+async function tryClip(text){ try { await navigator.clipboard.writeText(text); return true; } catch(e){ return false; } }
+/* напоминания пачкой: у кого есть бот — пишет бот, остальным текст копируется одним куском */
+async function remindMany(g, list, textOf){
+  const manual = list.filter(r=>!amHasTg(r.am)), bot = list.filter(r=>amHasTg(r.am));
+  const text = manual.map(textOf).join('\n\n');
+  const copied = manual.length ? await tryClip(text) : true;   // копируем первым делом, пока нажатие ещё считается действием пользователя
+  let n = 0, err = '';
+  if (bot.length && DEMO) err = 'демо, бот не пишет';
+  else for (const r of bot) { try { await send('remind', { path:r.path, text:textOf(r) }); n++; } catch(e){ err = e.message; } }
+  list.forEach(r=>sel.delete(g+'|'+r.id)); rerender();
+  if (!copied) showFallback(document.querySelector('[data-fbg="'+g+'"]'), text);
+  const parts = [];
+  if (n) parts.push('Бот написал: '+n);
+  if (manual.length) parts.push(copied ? 'текст для '+manual.length+' скопирован' : 'скопируйте текст ниже');
+  if (err) parts.push('ошибка: '+err);
+  toast(parts.join(' · ') || 'Готово');
 }
 
 /* ---- кусочки разметки ---- */
+const duePill = s => s.late>0 ? `<span class="pill p-red">просрочка ${days(s.late)}</span>`
+  : s.due && s.left<=1 ? `<span class="pill p-orange">${s.left===0?'срок сегодня':'срок завтра'}</span>`
+  : s.due ? `<span class="pill p-grey">до ${dd(s.due)}</span>` : `<span class="pill p-grey">ждём ${days(s.wait||0)}</span>`;
 const holderPill = (rs, r) => {
   if (!rs.cur) return r && !r.clientSigned ? '<span class="pill p-green">закрыто</span> <span class="pill p-orange">клиент не подписал</span>' : '<span class="pill p-green">закрыто</span>';
   const [l,c] = WHO[rs.holder];
-  let s = `<span class="pill" style="background:${c}22;color:${c}">${l}</span>`;
-  if (rs.late>0) s += ` <span class="pill p-red">просрочка ${days(rs.late)}</span>`;
-  else if (rs.due && rs.left<=1) s += ` <span class="pill p-orange">${rs.left===0?'срок сегодня':'срок завтра'}</span>`;
-  else if (rs.due) s += ` <span class="pill p-grey">до ${dd(rs.due)}</span>`;
-  else s += ` <span class="pill p-grey">ждём ${days(rs.wait)}</span>`;
-  return s;
+  return `<span class="pill" style="background:${c}22;color:${c}">${l}</span> ` + duePill(rs);
 };
 const dots = (r, rs) => `<span class="cdots">${rs.steps.map(s=>{ const v=(r.steps||{})[s.k];
   const c = v&&v.skip?'skip':v&&v.d?'done':rs.cur&&rs.cur.k===s.k?'cur':''; return `<i class="${c}" style="${c==='cur'?'--c:'+WHO[rs.holder][1]:''}"></i>`; }).join('')}</span>`;
@@ -626,77 +681,140 @@ function rowHTML(r, rs, extra){
     ${extra||''}
   </div>`;
 }
-
-/* ---- вкладка «Закрытие» ---- */
-function renderClose(){
-  const p = P(), me = p.me || {};
-  if (!p.months.length && D.closing && D.closing.length) { cv = 'arch'; }
-  if (cmon === null || p.months.indexOf(cmon) < 0) cmon = p.months[p.months.length-1] || null;
-  if (!cv) cv = me.canEdit ? 'mine' : 'mine';
-  const subs = [['mine','Мои задачи'],['board','Все проекты'],['team','Аккаунты']];
-  if (me.canEdit) subs.push(['setup','Месяц и проекты']);
-  if (D.closing && D.closing.length) subs.push(['arch','Архив']);
-  const m = monthDoc();
-  let html = `<div class="chips">${subs.map(([k,l])=>`<button class="chip" data-cv="${k}" aria-pressed="${cv===k}">${l}</button>`).join('')}</div>`;
-  if (cv !== 'arch') {
-    if (p.months.length > 1) html += `<div class="chips">${p.months.slice(-4).map(k=>{ const d = p.db['months/'+k]; return `<button class="chip" data-cm="${k}" aria-pressed="${cmon===k}">${esc(d?d.label:k)}</button>`; }).join('')}</div>`;
-    if (!m) html += `<div class="card"><h2>Месяцев закрытия пока нет</h2><div class="note">${me.canEdit?'Откройте первый месяц во вкладке «Месяц и проекты».':'Ассистент ещё не открыл месяц.'}</div></div>`;
-    else html += summaryHTML() + (cv==='mine'?mineHTML():cv==='board'?boardHTML():cv==='team'?teamHTML():setupHTML());
-  } else html += archiveHTML();
-  $('#v-close').innerHTML = html + panelHTML();
-  bindClose();
-}
-function summaryHTML(){
-  const m = monthDoc(), dl = m.dl||{}, t = today();
-  const cnt = {}; HOLD_ORDER.forEach(k=>cnt[k]=[0,0]);
-  monthRows().forEach(r=>{ const s = rowState(r); cnt[s.holder][0]++; if (s.late>0) cnt[s.holder][1]++; });
-  const total = monthRows().length;
-  return `<div class="card"><h2>${esc(m.label)} <small>${cnt.done[0]} из ${total} закрыто</small></h2>
-    <div class="chips" style="margin-bottom:12px">${dlKeys(approvalMode()).filter(k=>dl[k]).map(k=>`<span class="pill ${dl[k]<t?'p-red':dl[k]===t?'p-orange':'p-grey'}">${dlLabel(k)} до ${dd(dl[k])}</span>`).join('')}</div>
-    <div class="note" style="margin:-4px 0 12px">Согласование: ${esc(APPROVAL[approvalMode()]).toLowerCase()}</div>
-    <div class="cballs">${HOLD_ORDER.map(k=>`<button class="cball" data-h="${k}" aria-pressed="${cfHolder===k}" style="--c:${WHO[k][1]}">
-      <span class="n num">${cnt[k][0]}</span><span class="l">${k==='done'?'Закрыто':'Ждут: '+WHO[k][0].toLowerCase()}</span>${k!=='done'&&cnt[k][1]?`<span class="x">${cnt[k][1]} просроч.</span>`:''}</button>`).join('')}</div></div>`;
-}
-function boardHTML(){
-  let list = monthRows();
-  const ams = [...new Set(list.map(r=>r.am).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
-  if (cfHolder) list = list.filter(r=>rowState(r).holder===cfHolder);
-  if (cfAm) list = list.filter(r=>r.am===cfAm);
-  return `<div class="card"><h2>Проекты <small>сначала то, что горит</small></h2>
-    <div class="chips"><button class="chip" data-am="" aria-pressed="${!cfAm}">Все</button>${ams.map(a=>`<button class="chip" data-am="${esc(a)}" aria-pressed="${cfAm===a}">${esc(a)}</button>`).join('')}</div>
-    <div class="list">${sortRows(list).map(({r,s})=>rowHTML(r,s)).join('') || '<div class="note">Под фильтр ничего не попало.</div>'}</div></div>`;
-}
 function cardList(title, note, items){
   return `<div class="card"><h2>${title}</h2>${note?`<div class="note" style="margin:-6px 0 10px">${note}</div>`:''}<div class="list">${items || '<div class="note">Пусто.</div>'}</div></div>`;
 }
 function actBtn(label, attrs, cls){ return `<button class="copy ${cls||''}" ${attrs}>${label}</button>`; }
+
+/* ---- вкладка «Закрытие» ---- */
+function subTabs(me){
+  const boss = !me.canEdit && me.role==='Руководитель';
+  const s = boss ? [['board','Все проекты'],['team','Аккаунты']] : [['mine','Мои задачи'],['board','Все проекты'],['team','Аккаунты']];
+  if (me.canEdit) s.push(['setup','Настройка месяца']);
+  return s;
+}
+function monthOptions(){
+  const p = P(), C = D.closing || [];
+  const work = p.months.slice().reverse().map(k=>({ v:'w:'+k, l:(p.db['months/'+k]||{}).label || k }));
+  const seen = new Set(work.map(x=>String(x.l).toLowerCase()));
+  const arch = C.map((c,i)=>({ v:'a:'+i, l:c.month })).filter(x=>!seen.has(String(x.l).toLowerCase())).reverse();
+  return { work, arch };
+}
+function renderClose(){
+  const p = P(), me = p.me || {}, C = D.closing || [];
+  const old = document.querySelector('#v-close .csheet'), sheetTop = old ? old.scrollTop : 0;
+  if (cmon === null || p.months.indexOf(cmon) < 0) cmon = p.months[p.months.length-1] || null;
+  if (carch !== null && !C[carch]) carch = null;
+  if (!cmon && carch === null && C.length) carch = C.length-1;
+  const subs = subTabs(me); if (!subs.some(x=>x[0]===cv)) cv = subs[0][0];
+  const { work, arch } = monthOptions(), curV = carch !== null ? 'a:'+carch : 'w:'+cmon;
+  let html = '';
+  if (work.length + arch.length) html += `<div class="ctop"><label class="msel"><span class="lbl">Месяц</span><select id="cmSel">
+      ${work.map(o=>`<option value="${esc(o.v)}"${o.v===curV?' selected':''}>${esc(o.l)}</option>`).join('')}
+      ${arch.length?`<optgroup label="Архив — только просмотр">${arch.map(o=>`<option value="${esc(o.v)}"${o.v===curV?' selected':''}>${esc(o.l)}</option>`).join('')}</optgroup>`:''}
+    </select></label></div>`;
+  if (carch !== null) html += archiveHTML();
+  else if (!monthDoc()) html += `<div class="card"><h2>Месяцев закрытия пока нет</h2><div class="note">Ассистент ещё не открыл месяц.</div></div>`;
+  else {
+    html += `<div class="chips">${subs.map(([k,l])=>`<button class="chip" data-cv="${k}" aria-pressed="${cv===k}">${l}</button>`).join('')}</div>`;
+    html += cv==='mine' ? mineHTML() : cv==='board' ? boardHTML() : cv==='team' ? summaryHTML(false)+teamHTML() : setupHTML();
+  }
+  $('#v-close').innerHTML = html + (carch === null ? panelHTML() : '');
+  document.querySelectorAll('#v-close [data-pickall]').forEach(el => { el.indeterminate = el.dataset.some === '1'; });
+  const sh = document.querySelector('#v-close .csheet'); if (sh && sheetTop) sh.scrollTop = sheetTop;
+  bindClose();
+}
+function summaryHTML(withBalls){
+  const m = monthDoc(), dl = m.dl||{}, t = today(), rows = monthRows();
+  const cnt = {}; HOLD_ORDER.forEach(k=>cnt[k]=[0,0]);
+  rows.forEach(r=>{ const s = rowState(r); cnt[s.holder][0]++; if (s.late>0) cnt[s.holder][1]++; });
+  const pills = dlKeys(approvalMode()).filter(k=>dl[k]).map(k=>`<span class="pill ${dl[k]<t?'p-red':dl[k]===t?'p-orange':'p-grey'}">${dlLabel(k)} до ${dd(dl[k])}</span>`).join('');
+  return `<div class="card"><h2>${esc(m.label)} <small>${cnt.done[0]} из ${rows.length} закрыто</small></h2>
+    ${pills?`<div class="chips" style="margin-bottom:${withBalls?12:0}px">${pills}</div>`:''}
+    ${approvalMode()==='advance'?`<div class="note" style="margin:${pills?'8px':'0'} 0 ${withBalls?12:0}px">Этот месяц по старой схеме: приложение клиент согласовал заранее.</div>`:''}
+    ${withBalls?`<div class="cballs">${HOLD_ORDER.map(k=>`<button class="cball" data-h="${k}" aria-pressed="${cfHolder===k}" style="--c:${WHO[k][1]}">
+      <span class="n num">${cnt[k][0]}</span><span class="l">${k==='done'?'Закрыто':'Ждут: '+WHO[k][0].toLowerCase()}</span>${k!=='done'&&cnt[k][1]?`<span class="x">${cnt[k][1]} просроч.</span>`:''}</button>`).join('')}</div>
+      <div class="note">Нажмите на плитку, чтобы оставить в списке только эти проекты.</div>`:''}</div>`;
+}
+function boardHTML(){
+  let list = monthRows();
+  const ams = [...new Set(list.map(r=>r.am).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
+  if (cfAm && ams.indexOf(cfAm) < 0) cfAm = null;
+  if (cfHolder) list = list.filter(r=>rowState(r).holder===cfHolder);
+  if (cfAm) list = list.filter(r=>r.am===cfAm);
+  const f = [];
+  if (cfHolder) f.push(`<button class="chip" data-unf="h" aria-pressed="true">${cfHolder==='done'?'Закрыто':'Ждут: '+WHO[cfHolder][0].toLowerCase()} ✕</button>`);
+  if (cfAm) f.push(`<button class="chip" data-unf="am" aria-pressed="true">${esc(cfAm)} ✕</button>`);
+  return summaryHTML(true) + `<div class="card"><h2>Проекты <small>${list.length} · сначала то, что горит</small></h2>
+    <div class="chips">${ams.map(a=>`<button class="chip" data-am="${esc(a)}" aria-pressed="${cfAm===a}">${esc(a)}</button>`).join('')}</div>
+    ${f.length?`<div class="cfilt"><span class="note" style="margin:0">Фильтр:</span>${f.join('')}${f.length>1?'<button class="clink" data-unf="all">сбросить всё</button>':''}</div>`:''}
+    <div class="list">${sortRows(list).map(({r,s})=>rowHTML(r,s)).join('') || '<div class="note">Под фильтр ничего не попало.</div>'}</div></div>`;
+}
+
+/* «Мои задачи» для ассистента и специалиста ДО: проекты сгруппированы по тому, что с ними сделать сейчас */
+const actOrder = () => approvalMode()==='package' ? ['chk','bill','docs','upd','app','appr','edo','sign'] : ['chk','app','appr','bill','docs','upd','edo','sign'];
+function actTitle(k){ const pack = approvalMode()==='package';
+  return ({ chk:'Проверить приложение и суммы', bill: pack?'Подготовить приложение и отправить счёт бухгалтеру':'Отправить счёт бухгалтеру', upd:'Получить УПД от бухгалтера',
+    docs: pack?'Подготовить приложение, счёт и УПД':'Подготовить счёт и УПД', app: pack?'Отправить пакет документов клиенту':'Отправить приложение клиенту',
+    appr: pack?'Клиент согласовал пакет':'Клиент согласовал приложение', edo:'Выгрузить в ЭДО', sign:'Руководитель подписал в ЭДО' })[k] || k; }
+const ACT_HINT = {
+  chk:'Отмечает специалист ДО после проверки.',
+  bill:'ООО: приложение готовим сами, УПД делает бухгалтер.',
+  docs:'ИП: номер счёта — из Контура, УПД — на service-online.',
+  upd:'Отмечайте, когда бухгалтер прислал УПД.',
+  app:'Отчёт добавляем там, где он помечен.',
+  appr:'Если клиент прислал правки — откройте проект и оставьте комментарий.'
+};
+function pickRowHTML(g, r, s, kind){
+  const key = g+'|'+r.id;
+  const note = kind==='remind' ? [r.am||'аккаунт не назначен', s.cur && s.cur.t] : kind==='signed' ? [r.am||'—', r.entity]
+    : [r.am||'—', r.entity, r.kind && r.kind!=='Основное' && r.kind, s.cur && s.cur.k==='app' && needsReport(r) && 'с отчётом'];
+  const edo = (r.steps||{}).edo;
+  const pills = kind==='signed' ? `<span class="pill p-grey">${edo&&edo.d?'в ЭДО с '+dd(edo.d):'закрыто'}</span>` : duePill(s);
+  return `<div class="row crow cpick"><label class="cbox"><input type="checkbox" data-pick="${esc(key)}"${sel.has(key)?' checked':''} aria-label="Выбрать: ${esc(r.project)}"></label>
+    <div class="click" tabindex="0" role="button" data-open="${esc(r.id)}"><div class="t">${esc(r.project)}</div><div class="s">${esc(note.filter(Boolean).join(' · '))}</div>
+      <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">${pills}</div></div>
+    <div style="text-align:right">${dots(r, s)}</div></div>`;
+}
+function groupHTML(g, title, hint, items, kind){
+  const n = items.filter(x=>sel.has(g+'|'+x.r.id)).length, all = n === items.length, late = items.filter(x=>x.s.late>0).length;
+  const dis = n ? '' : ' disabled', cnt = n ? ' ('+n+')' : '';
+  const btns = kind==='mark' ? actBtn('Готово'+cnt, `data-bulk="${g}" data-kind="mark"${dis}`)
+    : kind==='remind' ? actBtn('Напомнить'+cnt, `data-bulk="${g}" data-kind="remind"${dis}`) + actBtn('Шаг выполнен', `data-bulk="${g}" data-kind="mark"${dis}`, 'ghost')
+    : actBtn('Клиент подписал'+cnt, `data-bulk="${g}" data-kind="signed"${dis}`) + actBtn('Попросить аккаунтов напомнить', `data-bulk="${g}" data-kind="remindsign"${dis}`, 'ghost');
+  return `<div class="card"><h2>${esc(title)} <small>${items.length}${late?` · <b style="color:var(--red)">${late} просроч.</b>`:''}</small></h2>
+    ${hint?`<div class="note" style="margin:-6px 0 10px">${hint}</div>`:''}
+    <div class="cbar"><label class="cbox"><input type="checkbox" data-pickall="${g}" data-some="${n&&!all?1:0}"${all?' checked':''}><span>${all?'Снять все':'Выбрать все'}</span></label><div class="cact">${btns}</div></div>
+    <div class="fb" data-fbg="${g}"></div>
+    <div class="list">${items.map(({r,s})=>pickRowHTML(g, r, s, kind)).join('')}</div></div>`;
+}
 function mineHTML(){
   const me = P().me, rows = monthRows();
-  const amView = !me.canEdit && me.role !== 'Руководитель' || me.role === 'Аккаунт';
-  if (amView) {
-    const mine = rows.filter(r=>r.am===me.name);
+  if (!me.canEdit) {
     if (!me.name) return `<div class="card"><h2>Кто вы?</h2><div class="note">Специалист ДО ещё не вписал ваше имя в лист «Команда». Пока смотрите вкладку «Все проекты».</div></div>`;
+    const mine = rows.filter(r=>r.am===me.name);
     const wait = sortRows(mine.filter(r=>rowState(r).holder==='am')), rest = sortRows(mine.filter(r=>rowState(r).holder!=='am'));
-    return cardList('Ждут от вас <small>пока здесь что-то есть, закрытие стоит</small>', '', wait.map(({r,s})=>rowHTML(r,s, amActions(r,s))).join(''))
+    return summaryHTML(false) + cardList('Ждут от вас <small>пока здесь что-то есть, закрытие стоит</small>', '', wait.map(({r,s})=>rowHTML(r,s, amActions(r,s))).join(''))
       + cardList('Ваши проекты дальше по цепочке', '', rest.map(({r,s})=>rowHTML(r,s)).join(''));
   }
-  const lead = sortRows(rows.filter(r=>rowState(r).holder==='lead'));
-  const amLate = sortRows(rows.filter(r=>{ const s = rowState(r); return s.holder==='am' && (s.late>0 || (s.due && s.left<=1)); }));
-  const work = sortRows(rows.filter(r=>['asst','acc','client','boss'].includes(rowState(r).holder)));
-  const unsigned = rows.filter(r=>!rowState(r).cur && !r.clientSigned);
-  let h = '';
-  if (me.role==='Специалист ДО' || lead.length) h += cardList('Ждут проверки специалиста ДО', '', lead.map(({r,s})=>rowHTML(r,s, nextBtn(r,s))).join(''));
-  h += cardList('Пора напомнить аккаунтам', 'Срок прошёл или наступает завтра. Бот сам напишет аккаунту в Telegram.', amLate.map(({r,s})=>rowHTML(r,s, `<div class="cact">${actBtn('Напомнить '+esc(r.am), `data-remind="${esc(r.id)}"`)}</div><div class="fb"></div>`)).join(''));
-  h += cardList('В работе у ассистента, клиента, бухгалтера и руководителя', '', work.map(({r,s})=>rowHTML(r,s, nextBtn(r,s))).join(''));
-  h += cardList('Клиенты не подписали закрывающие', 'Сверяем раз в месяц. Закрытие этого не ждёт, но аккаунт напоминает клиенту.', unsigned.map(r=>rowHTML(r,rowState(r), `<div class="cact">${actBtn('Напомнить '+esc(r.am||''), `data-remindsign="${esc(r.id)}"`)}${actBtn('Клиент подписал', `data-signed="${esc(r.id)}"`, 'ghost')}</div><div class="fb"></div>`)).join(''));
+  const all = sortRows(rows), groups = {};
+  all.forEach(x => { if (!x.s.cur) return; const g = x.s.holder==='am' ? 'am' : x.s.cur.k; (groups[g] = groups[g] || []).push(x); });
+  const unsigned = all.filter(x => !x.s.cur && !x.r.clientSigned);
+  let h = summaryHTML(false);
+  const order = actOrder().filter(k=>groups[k]);
+  if (me.role !== 'Специалист ДО' && order[0]==='chk') order.push(order.shift());   // ассистенту проверка ДО — не его шаг, уводим вниз
+  h += order.map(k=>groupHTML(k, actTitle(k), ACT_HINT[k]||'', groups[k], 'mark')).join('');
+  if (groups.am) h += groupHTML('am', 'Ждём от аккаунтов', 'Материалы, проверка или ответ клиента. Бот напишет аккаунту в Telegram, у кого бота нет — текст скопируется.', groups.am, 'remind');
+  if (unsigned.length) h += groupHTML('csig', 'Клиент не подписал в ЭДО', 'Закрытие этого не ждёт. Сверяем раз в месяц, аккаунт напоминает клиенту.', unsigned, 'signed');
+  if (!order.length && !groups.am && !unsigned.length) h += `<div class="card"><h2>Всё закрыто</h2><div class="note">По этому месяцу задач не осталось.</div></div>`;
   return h;
 }
-function nextBtn(r, s){ return s.cur ? `<div class="cact">${actBtn('Готово: '+esc(s.cur.t.toLowerCase()), `data-step="${esc(r.id)}|${s.cur.k}"`)}</div>` : ''; }
 function amActions(r, s){
   if (!s.cur) return '';
-  if (s.cur.k==='am') return `<div class="cact"><input class="search" id="lnk-${esc(r.id)}" placeholder="Ссылка на смету / отчёт (можно без неё)" style="margin:0">${actBtn('Сдал(а)', `data-amdone="${esc(r.id)}"`)}</div>`;
-  if (s.cur.k==='chk') return `<div class="cact">${actBtn('Проверил(а), всё верно', `data-step="${esc(r.id)}|chk"`)}</div>`;
-  if (s.cur.k==='appr') return `<div class="cact">${actBtn('Клиент согласовал', `data-step="${esc(r.id)}|appr"`)}</div>`;
+  if (s.cur.k==='am') { const k = 'lnk:'+r.id;
+    return `<div class="cact"><input class="search" data-draft="${esc(k)}" value="${esc(drafts[k]||'')}" placeholder="Ссылка на смету / отчёт (можно без неё)" style="margin:0">${actBtn('Сдал(а)', `data-amdone="${esc(r.id)}"`)}</div>`; }
+  if (s.cur.k==='chk' && s.cur.who==='am') return `<div class="cact">${actBtn('Проверил(а), всё верно', `data-step="${esc(r.id)}|chk"`)}</div>`;
+  if (s.cur.k==='appr' && s.cur.who==='am') return `<div class="cact">${actBtn('Клиент согласовал', `data-step="${esc(r.id)}|appr"`)}</div>`;
   return '';
 }
 function teamHTML(){
@@ -719,16 +837,21 @@ function nextMonthInfo(){
   return { id, label: MONF[mo-1][0].toUpperCase()+MONF[mo-1].slice(1)+' '+y, y, mo };
 }
 const dlKeys = mode => mode==='package' ? ['am','docs','app','edo'] : ['am','app','docs','edo'];
+function newMonthCard(from){
+  const n = nextMonthInfo(), exists = P().months.indexOf(n.id)>=0;
+  return `<div class="card"><h2>Новый месяц</h2><div class="note" style="margin:-6px 0 12px">${from?`Проекты скопируются из ${esc(from.toLowerCase())} с теми же аккаунтами и пометками, шаги — с нуля. `:''}Клиент согласует готовый пакет документов. Сроки встанут на 3, 5, 7 и 10 число, их можно поменять.</div>
+    ${exists?`<div class="note">${esc(n.label)} уже открыт.</div>`:actBtn('Открыть '+esc(n.label.toLowerCase()), 'id="newMonth"')}</div>`;
+}
 function setupHTML(){
-  const m = monthDoc(), dl = m.dl||{}, me = P().me, n = nextMonthInfo(), exists = P().months.indexOf(n.id)>=0, mode = approvalMode();
+  const m = monthDoc(), dl = m.dl||{}, mode = approvalMode();
   const ams = (P().team||[]).filter(t=>t.role==='Аккаунт').map(t=>t.name);
   const amOpts = [...new Set(ams.concat(monthRows().map(r=>r.am).filter(Boolean)))];
   return `<div class="card"><h2>Сроки <small>${esc(m.label)}</small></h2>
     <form id="dlForm" class="cform">
-      <label>Как клиент согласует<select id="dl-mode">${Object.keys(APPROVAL).map(k=>`<option value="${k}"${mode===k?' selected':''}>${esc(APPROVAL[k])}</option>`).join('')}</select></label>
+      ${legacyMonth()?`<label>Как клиент согласует<select id="dl-mode">${Object.keys(APPROVAL).map(k=>`<option value="${k}"${mode===k?' selected':''}>${esc(APPROVAL[k])}</option>`).join('')}</select></label>`:''}
       ${dlKeys(mode).map(k=>`<label>${dlLabel(k,mode)}<input type="date" id="dl-${k}" value="${esc(dl[k]||'')}"></label>`).join('')}
-    <button class="copy" type="submit">Сохранить</button></form>
-    <div class="note" style="margin-top:10px">${mode==='package'?'Ассистент собирает приложение, счёт, УПД и (где нужно) отчёт и отправляет клиенту одним пакетом. Клиент согласует всё сразу, потом выгружаем в ЭДО.':'Клиент уже согласовал приложение заранее — после согласования готовим счёт и УПД и выгружаем в ЭДО.'}</div></div>
+    <button class="copy" type="submit">Сохранить сроки</button></form>
+    <div class="note" style="margin-top:10px">${mode==='package'?'Ассистент собирает приложение, счёт, УПД и (где нужно) отчёт и отправляет клиенту одним пакетом. Клиент согласует всё сразу, потом выгружаем в ЭДО.':'Клиент уже согласовал приложение заранее — после согласования готовим счёт и УПД и выгружаем в ЭДО.'} Срок аккаунту по отдельному проекту меняется в карточке проекта.</div></div>
   <div class="card"><h2>Добавить проект или доп. работу <small>доп. кост и спецпроект — отдельной строкой</small></h2>
     <form id="addForm" class="cform">
       <label>Проект<input id="a-project" required placeholder="Например, Родина — спецпроект"></label>
@@ -739,109 +862,163 @@ function setupHTML(){
       <label>Юрлицо клиента<input id="a-payer"></label>
       <label>Согласование<select id="a-channel"><option>${CH_MAIL}</option><option>${CH_AM}</option></select></label>
       <button class="copy" type="submit">Добавить в ${esc(m.label.toLowerCase())}</button></form></div>
-  <div class="card"><h2>Новый месяц</h2><div class="note" style="margin:-6px 0 12px">Проекты скопируются из ${esc(m.label.toLowerCase())} с теми же аккаунтами и пометками, шаги — с нуля. Согласование — готовым пакетом документов. Сроки встанут на 3, 5, 7 и 10 число, их можно поменять.</div>
-    ${exists?`<div class="note">${esc(n.label)} уже открыт.</div>`:actBtn('Открыть '+esc(n.label.toLowerCase()), 'id="newMonth"')}</div>`;
+  ${newMonthCard(m.label)}`;
 }
 function archiveHTML(){
-  const C = D.closing || []; if (!C.length) return '<div class="card"><div class="note">Архива нет.</div></div>';
-  if (cm === null || cm >= C.length) cm = C.length-1;
-  const mm = C[cm];
-  const rows = mm.rows;
-  return `<div class="chips">${C.map((c,i)=>`<button class="chip" data-arch="${i}" aria-pressed="${i===cm}">${esc(c.month)}</button>`).join('')}</div>
-    <div class="card"><h2>${esc(mm.month)} <small>из листов «Закрытие …», только просмотр</small></h2>
-    <div class="list">${rows.map(r=>`<div class="row"><div><div class="t">${esc(r.client)}</div><div class="s">${esc(r.entity)}${r.comment?' · '+esc(r.comment):''}${r.date?' · '+esc(r.date):''}</div></div>
+  const mm = (D.closing||[])[carch]; if (!mm) return '<div class="card"><div class="note">Архива нет.</div></div>';
+  return `<div class="card"><h2>${esc(mm.month)} <small>из листов «Закрытие …», только просмотр</small></h2>
+    <div class="list">${mm.rows.map(r=>`<div class="row"><div><div class="t">${esc(r.client)}</div><div class="s">${esc(r.entity)}${r.comment?' · '+esc(r.comment):''}${r.date?' · '+esc(r.date):''}</div></div>
       <div style="align-self:center"><span class="pill ${(STATUS[r.status]||['p-grey'])[0]}">${esc(r.status||'—')}</span></div></div>`).join('')}</div></div>`;
 }
 
 /* ---- карточка проекта (выезжает снизу) ---- */
+const FIELD_NAME = { comment:'комментарий', carry:'перенос суммы', checker:'проверка', channel:'согласование', clientApprover:'кто согласует у клиента', amDue:'срок аккаунту' };
+function cardFields(r, canEdit){
+  const f = [['link', (r.steps && r.steps.am && r.steps.am.link) || ''], ['comment', r.comment||''], ['carry', r.carry||'']];
+  if (canEdit) f.push(['checker', r.checker||'не нужна'], ['channel', r.channel||CH_MAIL], ['clientApprover', r.clientApprover||''], ['amDue', r.amDue||'']);
+  return f;
+}
+const dkey = (r, f) => 'p:'+r.id+':'+f;
+const dval = (r, f, saved) => drafts[dkey(r,f)] !== undefined ? drafts[dkey(r,f)] : saved;
+function cardChanges(r){
+  const ch = {};
+  cardFields(r, P().me.canEdit).forEach(([f, saved]) => { const v = drafts[dkey(r,f)]; if (v === undefined) return; const t = String(v).trim(); if (t !== saved) ch[f] = t; });
+  return ch;
+}
+const isDirty = r => Object.keys(cardChanges(r)).length > 0;
+function dropDrafts(r){ Object.keys(drafts).forEach(k => { if (k.indexOf('p:'+r.id+':') === 0) delete drafts[k]; }); }
 function panelHTML(){
   const r = monthRows().find(x=>x.id===openRow); if (!r) return '';
-  const s = rowState(r), st = r.steps||{}, me = P().me, dl = (monthDoc()||{}).dl||{};
+  const s = rowState(r), st = r.steps||{}, me = P().me, dl = (monthDoc()||{}).dl||{}, dirty = isDirty(r);
   const steps = s.steps.map(x=>{ const v = st[x.k], done = v&&v.d, skip = v&&v.skip, cur = s.cur&&s.cur.k===x.k;
     const due = x.dl ? ((x.k==='am'&&r.amDue)?r.amDue:dl[x.dl]) : null;
     let meta = WHO[x.who][0] + (due?' · срок '+dd(due):'');
     if (done) meta = 'Готово '+dd(v.d)+(v.by?' · '+v.by:''); if (skip) meta = 'Не требуется';
-    const canMark = me.canEdit || x.who==='am' || x.who==='client';
+    const canMark = me.canEdit || x.who==='am';
     const btn = !canMark ? '' : (done||skip) ? `<button class="clink" data-undo="${x.k}">Отменить</button>`
       : `<button class="chip" data-mark="${x.k}" ${cur?'aria-pressed="true"':''}>Готово</button>${x.k==='am'&&me.canEdit?`<button class="clink" data-skip="am">Не нужно</button>`:''}`;
     return `<div class="cstep ${done?'done':skip?'skip':cur?'cur':''}" style="--c:${WHO[x.who][1]}"><i></i><div><div class="t">${esc(x.t)}</div><div class="s">${esc(meta)}</div></div><div class="cact" style="margin:0">${btn}</div></div>`; }).join('');
+  const cs = r.clientSigned;
+  const signStep = `<div class="cstep csig ${cs?'done':''}" style="--c:${WHO.client[1]}"><i></i><div><div class="t">Клиент подписал в ЭДО</div>
+      <div class="s">${cs?'Готово'+(cs.d?' '+dd(cs.d):'')+(cs.by?' · '+esc(cs.by):''):'Не блокирует закрытие'}</div></div>
+      <div class="cact" style="margin:0">${cs?'<button class="clink" id="unsign">Отменить</button>':'<button class="chip" id="signed">Готово</button>'}</div></div>`;
   const log = (r.log||[]).slice().reverse().slice(0,12).map(l=>{ const d = new Date(l.at); return `<div class="s">${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')} — ${esc(l.by)}: ${esc(l.t)}</div>`; }).join('');
-  const link = st.am && st.am.link;
+  const link = (st.am && st.am.link) || '';
+  const inp = (f, saved, ph) => `<input class="search" data-draft="${esc(dkey(r,f))}" value="${esc(dval(r,f,saved))}" placeholder="${ph}">`;
+  const remind = s.cur && s.holder==='am' && r.am ? `<div><div class="cact" style="margin:0">${actBtn(amHasTg(r.am)?'Напомнить '+esc(r.am)+' через бота':'Скопировать напоминание '+esc(r.am), `data-remind="${esc(r.id)}"`)}</div><div class="fb"></div>
+      <details class="cmore"><summary>Текст напоминания</summary><div class="cnote" style="white-space:pre-wrap;margin-top:8px">${esc(remindText(r,s))}</div></details></div>`
+    : !s.cur && !cs && r.am ? `<div><div class="cact" style="margin:0">${actBtn(amHasTg(r.am)?'Попросить '+esc(r.am)+' напомнить клиенту':'Скопировать просьбу '+esc(r.am), `data-remindsign="${esc(r.id)}"`, 'ghost')}</div><div class="fb"></div></div>` : '';
   return `<div class="cscrim" data-close></div><div class="csheet" role="dialog" aria-modal="true" aria-label="${esc(r.project)}">
     <div class="cgrab"></div>
-    <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><div class="lbl">${esc((monthDoc()||{}).label||'')} · ${esc(r.am||'')}</div><h1 style="font-size:20px;margin-top:6px">${esc(r.project)}</h1><div style="margin-top:8px">${entTag(r)}</div></div><button class="refresh" data-close aria-label="Закрыть">✕</button></div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap">${holderPill(s, r)}</div>
+    <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><div class="lbl">${esc((monthDoc()||{}).label||'')} · ${esc(r.am||'')}</div><h1 style="font-size:20px;margin-top:6px">${esc(r.project)}</h1><div style="margin-top:8px">${entTag(r)} ${holderPill(s, r)}</div></div><button class="refresh" data-close aria-label="Закрыть">✕</button></div>
+    ${leaveSure?`<div class="cwarn"><span>Есть несохранённые изменения</span><div class="cact" style="margin:0">${actBtn('Сохранить','id="pSave2"')}<button class="clink" id="pDiscard">Не сохранять</button></div></div>`:''}
     ${r.info?`<div class="cnote">${esc(r.info)}</div>`:''}
-    <div><div class="lbl" style="margin-bottom:8px">Шаги</div><div class="csteps">${steps}</div></div>
-    ${s.holder==='am'||s.cur&&s.cur.k==='chk'&&s.holder==='am'?`<div><div class="lbl" style="margin-bottom:8px">Напоминание аккаунту</div><div class="cnote" style="white-space:pre-wrap">${esc(remindText(r,s))}</div><div class="cact">${actBtn(amHasTg(r.am)?'Отправить через бота':'Скопировать', `data-remind="${esc(r.id)}"`)}</div><div class="fb"></div></div>`:''}
-    <div><div class="lbl" style="margin-bottom:8px">Подпись клиента в ЭДО</div>
-      <div class="note" style="margin:0 0 8px">${r.clientSigned?'Клиент подписал'+(r.clientSigned.d?' · '+dd(r.clientSigned.d):'')+(r.clientSigned.by?' · '+esc(r.clientSigned.by):''):'Ещё не подписал. Закрытие этого не ждёт.'}</div>
-      <div class="cact">${r.clientSigned?`<button class="clink" id="unsign">Снять отметку</button>`:actBtn('Клиент подписал','id="signed"','ghost')+(r.am?actBtn(amHasTg(r.am)?'Попросить аккаунта напомнить':'Скопировать просьбу аккаунту', `data-remindsign="${esc(r.id)}"`):'')}</div><div class="fb"></div></div>
-    <div><div class="lbl" style="margin-bottom:8px">Смета / отчёт</div>
-      ${link?`<div class="s" style="margin-bottom:8px"><a href="${esc(link)}" target="_blank" rel="noopener" style="color:var(--y)">${esc(link)}</a></div>`:''}
-      <div class="cact"><input class="search" id="pLink" value="${esc(link||'')}" placeholder="Ссылка на смету или отчёт" style="margin:0">${actBtn('Сохранить','id="saveLink"','ghost')}</div></div>
-    <div><div class="lbl" style="margin-bottom:8px">Комментарий</div><textarea class="search" id="pComment" rows="3" placeholder="Например: клиент просит пока не выгружать">${esc(r.comment||'')}</textarea>${actBtn('Сохранить комментарий','id="saveComment"','ghost')}</div>
-    <div><div class="lbl" style="margin-bottom:8px">Перенос суммы на следующий месяц</div><div class="cact"><input class="search" id="pCarry" value="${esc(r.carry||'')}" placeholder="Что и сколько переносим" style="margin:0">${actBtn('Сохранить','id="saveCarry"','ghost')}</div></div>
-    <div><div class="lbl" style="margin-bottom:8px">Кто согласует</div>${me.canEdit?`<form id="apprForm" class="cform">
-      <label>Проверка до отправки<select id="pChecker">${CHECKERS.map(c=>`<option${(r.checker||'не нужна')===c?' selected':''}>${c}</option>`).join('')}</select></label>
-      <label>Согласование с клиентом<select id="pChannel">${[CH_MAIL,CH_AM].map(c=>`<option${(r.channel||CH_MAIL)===c?' selected':''}>${c}</option>`).join('')}</select></label>
-      <label>Кто согласует у клиента<input id="pClient" value="${esc(r.clientApprover||'')}" placeholder="Имя, должность"></label>
-      <button class="copy ghost" type="submit">Сохранить</button></form>`:`<div class="note" style="margin:0">${esc(approvalLine(r))}</div>`}</div>
-    <div><div class="lbl" style="margin-bottom:8px">Данные</div><div class="s">Юрлицо клиента: ${esc(r.payer||'—')}<br>Наше юрлицо: ${r.entity==='ООО'?'ООО «Ра Цифровые проекты» — УПД делает бухгалтер':'ИП Гречковский А. О. — счёт, УПД и приложение готовим сами'}<br>От аккаунта: ${esc(r.need||'ничего, только коммуникация')}</div>
-      ${me.canEdit?`<button class="clink" id="delRow" style="color:var(--red);margin-top:10px">${delSure?'Точно удалить? Нажмите ещё раз':'Удалить строку из месяца'}</button>`:''}</div>
-    ${log?`<div><div class="lbl" style="margin-bottom:8px">История</div>${log}</div>`:''}
+    <div><div class="lbl" style="margin-bottom:8px">Шаги</div><div class="csteps">${steps}${signStep}</div></div>
+    ${remind}
+    <form id="pForm" class="cdet"><div class="lbl">Детали</div>
+      <label>Смета / отчёт${link?` · <a href="${esc(link)}" target="_blank" rel="noopener" style="color:var(--y);text-transform:none;letter-spacing:0">открыть</a>`:''}${inp('link', link, 'Ссылка на смету или отчёт')}</label>
+      <label>Комментарий<textarea class="search" rows="3" data-draft="${esc(dkey(r,'comment'))}" placeholder="Например: клиент просит пока не выгружать">${esc(dval(r,'comment',r.comment||''))}</textarea></label>
+      <label>Перенос суммы на следующий месяц${inp('carry', r.carry||'', 'Что и сколько переносим')}</label>
+      ${me.canEdit?`<div class="cform">
+        <label>Проверка до отправки<select data-draft="${esc(dkey(r,'checker'))}">${CHECKERS.map(c=>`<option${dval(r,'checker',r.checker||'не нужна')===c?' selected':''}>${c}</option>`).join('')}</select></label>
+        <label>Согласование с клиентом<select data-draft="${esc(dkey(r,'channel'))}">${[CH_MAIL,CH_AM].map(c=>`<option${dval(r,'channel',r.channel||CH_MAIL)===c?' selected':''}>${c}</option>`).join('')}</select></label>
+        <label>Кто согласует у клиента<input data-draft="${esc(dkey(r,'clientApprover'))}" value="${esc(dval(r,'clientApprover',r.clientApprover||''))}" placeholder="Имя, должность"></label>
+        <label>Срок аккаунту по проекту<input type="date" data-draft="${esc(dkey(r,'amDue'))}" value="${esc(dval(r,'amDue',r.amDue||''))}"></label></div>`
+        :`<div class="note" style="margin:0">${esc(approvalLine(r))}</div>`}
+      <div class="cact" style="margin:0"><button class="copy" type="submit" id="pSave"${dirty?'':' disabled'}>Сохранить</button><span class="note" id="pDirty" style="margin:0"${dirty?'':' hidden'}>есть несохранённые изменения</span></div>
+    </form>
+    <details class="cmore"><summary>Данные проекта${log?' и история':''}</summary>
+      <div class="s" style="margin-top:8px">Юрлицо клиента: ${esc(r.payer||'—')}<br>Наше юрлицо: ${r.entity==='ООО'?'ООО «Ра Цифровые проекты» — УПД делает бухгалтер':'ИП Гречковский А. О. — счёт, УПД и приложение готовим сами'}<br>От аккаунта: ${esc(r.need||'ничего, только коммуникация')}</div>
+      ${log?`<div class="lbl" style="margin:12px 0 6px">История</div>${log}`:''}
+      ${me.canEdit?`<button class="clink" id="delRow" style="color:var(--red);margin-top:10px">${delSure?'Точно удалить? Нажмите ещё раз':'Удалить строку из месяца'}</button>`:''}
+    </details>
   </div>`;
 }
+async function saveCard(r){
+  const ch = cardChanges(r), calls = [];
+  if ('link' in ch) { const prev = (r.steps||{}).am; calls.push(stepCall(r, 'am', Object.assign({}, prev||{}, { link: ch.link }), 'обновлена ссылка на смету/отчёт')); delete ch.link; }
+  const keys = Object.keys(ch);
+  if (keys.length) calls.push(patchCall(r, ch, 'обновлено: '+keys.map(k=>FIELD_NAME[k]||k).join(', ')));
+  if (!calls.length) return true;
+  const ok = await apiMany(calls);
+  if (ok) { dropDrafts(r); leaveSure = false; renderClose(); toast('Сохранено'); }
+  return ok;
+}
+function closeCard(force){
+  const r = monthRows().find(x=>x.id===openRow);
+  if (r && !force && isDirty(r)) { leaveSure = true; renderClose(); const sh = document.querySelector('#v-close .csheet'); if (sh) sh.scrollTop = 0; return; }
+  if (r && force) dropDrafts(r);
+  openRow = null; delSure = false; leaveSure = false; renderClose();
+}
+function openCard(id){ openRow = id; delSure = false; leaveSure = false; renderClose(); }
+/* Escape — на весь документ: после перерисовки фокус уходит на body и до #v-close не доходит */
+document.addEventListener('keydown', e => { if (e.key==='Escape' && openRow && view==='close') closeCard(leaveSure); });
 
 /* ---- события ---- */
 function bindClose(){
-  const root = $('#v-close'), rows = monthRows(), find = id => rows.find(x=>x.id===id), me = P().me;
+  const root = $('#v-close'), rows = monthRows(), find = id => rows.find(x=>x.id===id);
   root.onclick = async e => {
-    const b = e.target.closest('button,[data-open],[data-close]'); if (!b) return;
+    const b = e.target.closest('button,[data-open],[data-close]'); if (!b || b.disabled) return;
     const d = b.dataset;
     if (d.cv) { cv = d.cv; openRow = null; renderClose(); return; }
-    if (d.cm) { cmon = d.cm; openRow = null; renderClose(); return; }
-    if (d.arch) { cm = +d.arch; renderClose(); return; }
-    if (d.h) { cfHolder = cfHolder===d.h ? null : d.h; cv = 'board'; renderClose(); return; }
-    if (d.am !== undefined) { cfAm = d.am || null; renderClose(); return; }
-    if (b.hasAttribute('data-close')) { openRow = null; delSure = false; renderClose(); return; }
+    if (d.h) { cfHolder = cfHolder===d.h ? null : d.h; renderClose(); return; }
+    if (d.am !== undefined && b.classList.contains('chip')) { cfAm = cfAm===d.am ? null : d.am; renderClose(); return; }
+    if (d.unf) { if (d.unf!=='am') cfHolder = null; if (d.unf!=='h') cfAm = null; renderClose(); return; }
+    if (b.hasAttribute('data-close')) { closeCard(leaveSure); return; }
+    if (d.bulk) {
+      const g = d.bulk, list = monthRows().filter(r=>sel.has(g+'|'+r.id)); if (!list.length) return;
+      if (d.kind==='remind') { await remindMany(g, list, r=>remindText(r, rowState(r))); return; }
+      if (d.kind==='remindsign') { await remindMany(g, list, signText); return; }
+      const calls = d.kind==='signed' ? list.map(r=>patchCall(r, { clientSigned:{ d:today() } }, 'клиент подписал закрывающие в ЭДО'))
+        : list.map(r=>{ const s = rowState(r); return s.cur ? doneCall(r, s.cur.k) : null; }).filter(Boolean);
+      list.forEach(r=>sel.delete(g+'|'+r.id));
+      if (await apiMany(calls)) { toast('Отмечено: '+calls.length); try { tg && tg.HapticFeedback && tg.HapticFeedback.notificationOccurred('success'); } catch(e){} }
+      return;
+    }
     if (d.remind) { const r = find(d.remind); await sendReminder(r, remindText(r, rowState(r)), b); return; }
     if (d.remindsign) { const r = find(d.remindsign); await sendReminder(r, signText(r), b); return; }
-    if (d.signed) { const r = find(d.signed); await patch(r, { clientSigned:{ d:today() } }, 'клиент подписал закрывающие в ЭДО'); return; }
-    if (d.amdone) { const r = find(d.amdone), inp = $('#lnk-'+CSS.escape(r.id)); const v = { d:today() }; if (inp && inp.value.trim()) v.link = inp.value.trim();
-      await mark(r, 'am', v, 'готово: «'+rowState(r).cur.t+'»'); toast('Отмечено — ассистент видит'); return; }
-    if (d.step) { const [id,k] = d.step.split('|'), r = find(id), s = rowState(r).steps.find(x=>x.k===k), prev = (r.steps||{})[k]||{};
-      await mark(r, k, Object.assign({}, prev, { d:today(), skip:false }), 'готово: «'+s.t+'»'); return; }
-    if (d.open && !e.target.closest('button,input,textarea,a')) { openRow = d.open; delSure = false; renderClose(); return; }
+    if (d.amdone) { const r = find(d.amdone), k = 'lnk:'+r.id, v = { d:today() }; if ((drafts[k]||'').trim()) v.link = drafts[k].trim();
+      const ok = await mark(r, 'am', v, 'готово: «'+rowState(r).cur.t+'»'); if (ok) { delete drafts[k]; renderClose(); toast('Отмечено — ассистент видит'); } return; }
+    if (d.step) { const [id,k] = d.step.split('|'), r = find(id); await run(doneCall(r, k)); return; }
+    if (d.open && !e.target.closest('button,input,textarea,a,label')) { openCard(d.open); return; }
     const r = find(openRow); if (!r) return;
     const stepT = k => (rowState(r).steps.find(x=>x.k===k)||{}).t;
-    if (d.mark) { const prev = (r.steps||{})[d.mark]||{}; await mark(r, d.mark, Object.assign({}, prev, { d:today(), skip:false }), 'готово: «'+stepT(d.mark)+'»'); return; }
+    if (d.mark) { await run(doneCall(r, d.mark)); return; }
     if (d.skip) { await mark(r, d.skip, { skip:true }, 'шаг «'+stepT(d.skip)+'» не требуется'); return; }
     if (d.undo) { const prev = (r.steps||{})[d.undo]||{}; await mark(r, d.undo, prev.link ? { link:prev.link } : null, 'снят шаг «'+stepT(d.undo)+'»'); return; }
+    if (b.id==='signed') { await patch(r, { clientSigned:{ d:today() } }, 'клиент подписал закрывающие в ЭДО'); return; }
     if (b.id==='unsign') { await patch(r, { clientSigned:false }, 'снята отметка о подписи клиента'); return; }
-    if (b.id==='saveComment') { await patch(r, { comment: $('#pComment').value.trim() }, 'обновлён комментарий'); toast('Сохранено'); return; }
-    if (b.id==='saveCarry') { await patch(r, { carry: $('#pCarry').value.trim() }, 'обновлён перенос суммы'); toast('Сохранено'); return; }
-    if (b.id==='saveLink') { const prev = (r.steps||{}).am; const v = Object.assign({}, prev||{}, { link: $('#pLink').value.trim() });
-      await mark(r, 'am', v, 'обновлена ссылка на смету/отчёт'); toast('Сохранено'); return; }
-    if (b.id==='delRow') { if (!delSure) { delSure = true; renderClose(); return; } openRow = null; delSure = false;
+    if (b.id==='pSave2') { if (await saveCard(r)) closeCard(true); return; }
+    if (b.id==='pDiscard') { closeCard(true); return; }
+    if (b.id==='delRow') { if (!delSure) { delSure = true; renderClose(); return; } openRow = null; delSure = false; dropDrafts(r);
       await api('delete', { path:r.path }, db => { delete db[r.path]; }); toast('Строка удалена'); return; }
   };
-  root.onkeydown = e => { const t = e.target; if (t.dataset && t.dataset.open && (e.key==='Enter'||e.key===' ') && t === e.target) { e.preventDefault(); openRow = t.dataset.open; renderClose(); }
-    if (e.key==='Escape' && openRow) { openRow = null; renderClose(); } };
+  root.oninput = e => { const t = e.target; if (!t.dataset || !t.dataset.draft) return;
+    drafts[t.dataset.draft] = t.value;
+    const r = find(openRow); if (r && t.dataset.draft.indexOf('p:'+r.id+':') === 0) { const dirty = isDirty(r);
+      const sb = $('#pSave'); if (sb) sb.disabled = !dirty; const dn = $('#pDirty'); if (dn) dn.hidden = !dirty; } };
+  root.onchange = e => { const t = e.target;
+    if (t.id === 'cmSel') { const v = t.value; if (v.indexOf('a:')===0) carch = +v.slice(2); else { carch = null; cmon = v.slice(2); }
+      openRow = null; leaveSure = false; sel.clear(); renderClose(); return; }
+    if (t.dataset.draft && t.tagName === 'SELECT') { root.oninput(e); return; }
+    if (t.dataset.pick) { t.checked ? sel.add(t.dataset.pick) : sel.delete(t.dataset.pick); renderClose(); return; }
+    if (t.dataset.pickall) { const g = t.dataset.pickall, keys = [...root.querySelectorAll('[data-pick]')].map(x=>x.dataset.pick).filter(k=>k.indexOf(g+'|')===0);
+      keys.forEach(k => t.checked ? sel.add(k) : sel.delete(k)); renderClose(); return; }
+  };
+  root.onkeydown = e => { const t = e.target;
+    if (t.dataset && t.dataset.open && (e.key==='Enter'||e.key===' ')) { e.preventDefault(); openCard(t.dataset.open); } };
   root.onsubmit = async e => {
     e.preventDefault(); const f = e.target;
-    if (f.id==='dlForm') { const dl = {}; Object.keys(DL_LABEL).forEach(k=>{ const v = $('#dl-'+k).value; if (v) dl[k]=v; });
-      const approval = $('#dl-mode').value;
+    if (f.id==='pForm') { const r = find(openRow); if (r) await saveCard(r); return; }
+    if (f.id==='dlForm') { const dl = {}; Object.keys(DL_LABEL).forEach(k=>{ const el = $('#dl-'+k), v = el && el.value; if (v) dl[k]=v; });
+      const ms = $('#dl-mode'), approval = ms ? ms.value : approvalMode();
       await api('patch', { path:'months/'+cmon, fields:{ dl, approval } }, db => { Object.assign(db['months/'+cmon], { dl, approval }); }); toast('Сохранено'); }
     if (f.id==='addForm') { const p = $('#a-project').value.trim(); if (!p) return;
       const id = 'r' + Date.now().toString(36), path = 'months/'+cmon+'/rows/'+id;
       const data = { project:p, am:$('#a-am').value, entity:$('#a-entity').value, kind:$('#a-kind').value, need:$('#a-need').value.trim(), payer:$('#a-payer').value.trim(),
         channel:$('#a-channel').value, checker:'не нужна', info:'', comment:'', order: monthRows().length+1, steps:{} };
       if (!data.need) data.steps = { am:{ skip:true } };
-      await api('set', { path, data }, db => { db[path] = Object.assign({ log:[] }, data); }); f.reset(); toast('«'+p+'» добавлен'); }
-    if (f.id==='apprForm') { const r = find(openRow); if (!r) return; const checker = $('#pChecker').value;
-      const fields = { checker, channel:$('#pChannel').value, clientApprover:$('#pClient').value.trim() };
-      await patch(r, fields, 'обновлено, кто согласует'); toast('Сохранено'); }
+      await api('set', { path, data }, db => { db[path] = Object.assign({ log:[] }, data); }); toast('«'+p+'» добавлен'); }
   };
   const nm = $('#newMonth'); if (nm) nm.onclick = async () => {
     nm.disabled = true; const n = nextMonthInfo(); let cy = n.y, cmo = n.mo+1; if (cmo>12) { cmo=1; cy++; }
@@ -849,7 +1026,7 @@ function bindClose(){
     const pack = approvalMode({ id:n.id })==='package';
     const dl = pack ? { am:d(3), docs:d(5), app:d(7), edo:d(10) } : { am:d(3), app:d(5), docs:d(7), edo:d(10) };
     const j = await api('newMonth', { from:cmon, to:n.id, label:n.label, open:d(1), dl, approval: pack?'package':'advance' });
-    if (j) { cmon = n.id; renderClose(); toast(n.label+' открыт'); }
+    if (j) { cmon = n.id; carch = null; cv = 'setup'; renderClose(); toast(n.label+' открыт'); }
   };
 }
 
